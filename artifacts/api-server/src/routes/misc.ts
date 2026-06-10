@@ -204,38 +204,45 @@ router.get("/webhooks/meta", async (req, res): Promise<void> => {
   res.status(403).json({ error: "Verification failed" });
 });
 
-router.post("/webhooks/meta", async (req, res): Promise<void> => {
-  const cfg = await ensureApiConfig();
-  if (!checkSecret(req, cfg.webhook_secret)) {
-    res.status(401).json({ error: "Invalid secret" });
-    return;
-  }
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const fieldData: Record<string, unknown> = {};
-  const rawFields = body["field_data"];
-  if (Array.isArray(rawFields)) {
-    for (const f of rawFields as Record<string, unknown>[]) {
-      const name = String(f["name"] ?? "");
-      const values = f["values"];
-      fieldData[name] = Array.isArray(values) ? values[0] : f["value"];
+router.post("/webhooks/meta", (req, res): void => {
+  res.status(200).send("EVENT_RECEIVED");
+
+  void (async () => {
+    try {
+      const cfg = await ensureApiConfig();
+      if (!checkSecret(req, cfg.webhook_secret)) {
+        logger.warn("Meta webhook: invalid secret");
+        return;
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const fieldData: Record<string, unknown> = {};
+      const rawFields = body["field_data"];
+      if (Array.isArray(rawFields)) {
+        for (const f of rawFields as Record<string, unknown>[]) {
+          const name = String(f["name"] ?? "");
+          const values = f["values"];
+          fieldData[name] = Array.isArray(values) ? values[0] : f["value"];
+        }
+      }
+      const merged = { ...body, ...fieldData };
+
+      const result = await ingestLead({
+        source: "META_ADS",
+        sourceLabel: "Meta Ads",
+        fullName: pickField(merged, ["full_name", "name", "fullName"]),
+        phone: pickField(merged, ["phone", "phone_number", "phoneNumber"]),
+        email: pickField(merged, ["email"]),
+        city: pickField(merged, ["city"]),
+        insuranceType: pickField(merged, ["insurance_type", "insuranceType"]),
+        campaignId: pickField(merged, ["campaign_id", "campaignId"]),
+        formId: pickField(merged, ["form_id", "formId"]),
+      });
+
+      await logWebhook("META_ADS", result.ok ? "SUCCESS" : "SKIPPED", result.message);
+    } catch (err) {
+      logger.error({ err }, "Meta webhook background processing failed");
     }
-  }
-  const merged = { ...body, ...fieldData };
-
-  const result = await ingestLead({
-    source: "META_ADS",
-    sourceLabel: "Meta Ads",
-    fullName: pickField(merged, ["full_name", "name", "fullName"]),
-    phone: pickField(merged, ["phone", "phone_number", "phoneNumber"]),
-    email: pickField(merged, ["email"]),
-    city: pickField(merged, ["city"]),
-    insuranceType: pickField(merged, ["insurance_type", "insuranceType"]),
-    campaignId: pickField(merged, ["campaign_id", "campaignId"]),
-    formId: pickField(merged, ["form_id", "formId"]),
-  });
-
-  await logWebhook("META_ADS", result.ok ? "SUCCESS" : "SKIPPED", result.message);
-  res.json({ received: true, ...result });
+  })();
 });
 
 router.post("/webhooks/website-form", async (req, res): Promise<void> => {
