@@ -1,15 +1,124 @@
-import { useListLeads, useCreateLead, getListLeadsQueryKey, LeadStage, LeadSource, InsuranceType } from "@workspace/api-client-react";
+import { useListLeads, useCreateLead, getListLeadsQueryKey, LeadStage, LeadSource, InsuranceType, Gender, type LeadInput } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState } from "react";
 import { Link } from "wouter";
 import { formatPhone, formatDate } from "@/lib/format";
 import { Search, Plus, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+
+function NewLeadDialog() {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<LeadInput>({ full_name: "", phone: "" });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const createLead = useCreateLead();
+
+  const update = (patch: Partial<LeadInput>) => setForm((f) => ({ ...f, ...patch }));
+
+  const submit = () => {
+    if (!form.full_name.trim()) {
+      toast({ title: "Name required", variant: "destructive" });
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(form.phone)) {
+      toast({ title: "Enter a valid 10-digit mobile number", variant: "destructive" });
+      return;
+    }
+    createLead.mutate(
+      { data: { ...form, source: form.source ?? "MANUAL" } },
+      {
+        onSuccess: () => {
+          toast({ title: "Lead created" });
+          queryClient.invalidateQueries({ queryKey: getListLeadsQueryKey() });
+          setForm({ full_name: "", phone: "" });
+          setOpen(false);
+        },
+        onError: () => toast({ title: "Could not create lead", variant: "destructive" }),
+      },
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button onClick={() => setOpen(true)}>
+        <Plus className="w-4 h-4 mr-2" />
+        New Lead
+      </Button>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>New Lead</DialogTitle>
+          <DialogDescription>Add a lead manually to your CRM.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Full name</Label>
+            <Input value={form.full_name} onChange={(e) => update({ full_name: e.target.value })} placeholder="Priya Sharma" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Phone (10 digits)</Label>
+            <Input value={form.phone} onChange={(e) => update({ phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} placeholder="9876543210" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input value={form.email ?? ""} onChange={(e) => update({ email: e.target.value || undefined })} placeholder="optional" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>City</Label>
+            <Input value={form.city ?? ""} onChange={(e) => update({ city: e.target.value || undefined })} placeholder="optional" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Gender</Label>
+            <Select value={form.gender ?? ""} onValueChange={(v) => update({ gender: v as Gender })}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                {Object.keys(Gender).map((g) => (
+                  <SelectItem key={g} value={g} className="capitalize">{g.toLowerCase()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Insurance type</Label>
+            <Select value={form.insurance_type ?? ""} onValueChange={(v) => update({ insurance_type: v as InsuranceType })}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                {Object.keys(InsuranceType).map((t) => (
+                  <SelectItem key={t} value={t} className="capitalize">{t.toLowerCase()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Source</Label>
+            <Select value={form.source ?? "MANUAL"} onValueChange={(v) => update({ source: v as LeadSource })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.keys(LeadSource).map((s) => (
+                  <SelectItem key={s} value={s} className="capitalize">{s.replace(/_/g, " ").toLowerCase()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={submit} disabled={createLead.isPending}>
+            {createLead.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Create Lead
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Leads() {
   const [search, setSearch] = useState("");
@@ -33,10 +142,7 @@ export default function Leads() {
           <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
           <p className="text-muted-foreground mt-1">Manage and track your insurance leads.</p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          New Lead
-        </Button>
+        <NewLeadDialog />
       </div>
 
       <Card className="flex-1 flex flex-col overflow-hidden">

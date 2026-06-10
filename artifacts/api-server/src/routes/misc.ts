@@ -1,14 +1,14 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   db,
   leadsTable,
-  policiesTable,
   callLogsTable,
   webhookLogsTable,
 } from "@workspace/db";
 import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
+import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
 import { triggerCall, startPolling } from "../lib/call-engine";
 import {
@@ -63,63 +63,6 @@ function resolvePhone(req: Request): string | null {
   return normalizePhone(String(candidate));
 }
 
-async function buildContext(phone: string) {
-  const [lead] = await db
-    .select()
-    .from(leadsTable)
-    .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)));
-
-  if (!lead) {
-    return {
-      found: false,
-      call_type: "new_prospect",
-      name: "",
-      phone,
-    };
-  }
-
-  const policies = await db
-    .select()
-    .from(policiesTable)
-    .where(eq(policiesTable.lead_id, lead.id))
-    .orderBy(desc(policiesTable.created_at));
-
-  let callType = "sales";
-  const now = Date.now();
-  const upcomingRenewal = policies.find(
-    (p) =>
-      p.renewal_date &&
-      p.renewal_date.getTime() - now < 30 * 24 * 60 * 60 * 1000 &&
-      p.renewal_date.getTime() - now > -7 * 24 * 60 * 60 * 1000,
-  );
-  if (upcomingRenewal) callType = "renewal_reminder";
-  else if (lead.stage === "POLICY_ISSUED") callType = "service";
-  else if (policies.length > 0) callType = "existing_customer";
-
-  return {
-    found: true,
-    call_type: callType,
-    lead_id: lead.id,
-    name: lead.full_name,
-    gender: lead.gender,
-    phone: lead.phone,
-    city: lead.city,
-    state: lead.state,
-    insurance_type: lead.insurance_type,
-    stage: lead.stage,
-    premium_budget: lead.premium_budget,
-    sum_assured_interest: lead.sum_assured_interest,
-    policies: policies.map((p) => ({
-      policy_number: p.policy_number,
-      insurer_name: p.insurer_name,
-      policy_type: p.policy_type,
-      annual_premium: p.annual_premium,
-      renewal_date: p.renewal_date,
-      status: p.status,
-    })),
-  };
-}
-
 async function handleContext(req: Request, res: Response): Promise<void> {
   if (!(await authorizeContext(req))) {
     res.status(401).json({ error: "Unauthorized" });
@@ -130,7 +73,7 @@ async function handleContext(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: "Missing phone" });
     return;
   }
-  res.json(await buildContext(phone));
+  res.json(await buildCallContext(phone));
 }
 
 router.get("/context", handleContext);

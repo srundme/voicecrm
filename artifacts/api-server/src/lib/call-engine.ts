@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db, callLogsTable, leadsTable, type CallLogRow } from "@workspace/db";
 import { bolna, mapBolnaStatusToCallStatus } from "./bolna";
 import { normalizePhone } from "./phone";
+import { buildCallContext } from "./context";
 import { DEFAULT_ORG_ID } from "./org";
 import { emitCallUpdate } from "./events";
 import { serializeCallLog } from "./serialize";
@@ -41,10 +42,15 @@ export async function triggerCall(opts: {
     };
   }
 
+  // Fetch unified context (Module 5) and inject it as agent variables so the
+  // Bolna agent opens with the right memory/opening line for this contact.
+  const context = await buildCallContext(phone);
+  const variables = { ...context, ...(opts.variables ?? {}) };
+
   const started = await bolna.startCall({
     agentId: opts.agentId,
     phone,
-    variables: opts.variables,
+    variables,
   });
 
   if (!started.success) {
@@ -67,7 +73,7 @@ export async function triggerCall(opts: {
       direction: "OUTBOUND",
       phone_number: phone,
       status: "INITIATED",
-      call_type: opts.callType ?? null,
+      call_type: opts.retryOfCallId ? "drop_retry" : context.call_type,
       retry_of_call_id: opts.retryOfCallId ?? null,
     })
     .returning();

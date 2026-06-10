@@ -1,2 +1,3 @@
 - [DB project-reference rebuild](db-ts-project-refs.md) — after editing `lib/db` schema, rebuild its declarations or api-server typecheck sees stale exports.
 - [API field naming](api-snakecase-convention.md) — OpenAPI + Drizzle JS keys are snake_case so DB rows `.parse()` into zod responses directly; dates use `zod.coerce.date()` (accepts Date objects).
+- [Webhook URLs carry secret](webhook-urls-carry-secret.md) — config `*_webhook_url` already include `?secret=`; never re-append it in clients or you get 401.
