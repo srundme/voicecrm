@@ -16,6 +16,7 @@ import Agents from "@/pages/agents";
 import LeadSources from "@/pages/lead-sources";
 import Settings from "@/pages/settings";
 import Team from "@/pages/team";
+import Campaigns from "@/pages/campaigns";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ function Router() {
         <Route path="/lead-sources" component={LeadSources} />
         <Route path="/settings" component={Settings} />
         <Route path="/team" component={Team} />
+        <Route path="/campaigns" component={Campaigns} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
