@@ -272,6 +272,10 @@ router.post("/webhooks/website-form", async (req, res): Promise<void> => {
 
 router.post("/webhooks/bolna", async (req, res): Promise<void> => {
   const body = (req.body ?? {}) as Record<string, unknown>;
+
+  // DEBUG: log raw payload keys and values to diagnose phone extraction
+  logger.info({ bodyKeys: Object.keys(body), body }, "Bolna webhook: raw payload");
+
   const executionId = String(
     body["execution_id"] ?? body["call_id"] ?? body["id"] ?? "",
   );
@@ -290,6 +294,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     const rawPhone = String(
       body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ?? "",
     );
+    logger.info({ rawPhone, normalizedLen: rawPhone.replace(/\D/g, "").length }, "Bolna webhook: phone extraction");
     const phone = normalizePhone(rawPhone);
     const agentId = String(body["agent_id"] ?? body["bolna_agent_id"] ?? "");
     const rawDir = String(body["direction"] ?? "outbound").toUpperCase();
