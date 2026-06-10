@@ -13,6 +13,8 @@
 |---|---|
 | 2026-06-10 | Initial full spec — schema, routes, webhooks, scheduler, frontend |
 | 2026-06-10 | Added auto-callback scheduling from call transcript (Hindi + English NLP) |
+| 2026-06-10 | Fixed: callback now works for calls made directly from Bolna (no lead_id) — looks up lead by phone and back-fills the link |
+| 2026-06-10 | Fixed: transcript/summary now read directly from Bolna webhook body (not only from getExecution) so callback intent is detected even if transcript API isn't ready yet |
 
 ---
 

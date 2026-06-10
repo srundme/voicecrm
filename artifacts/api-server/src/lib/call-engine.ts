@@ -132,15 +132,39 @@ export function parseCallbackIntent(
 }
 
 export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
-  if (!call.lead_id) return;
   try {
+    // If lead_id is missing (e.g. call made directly from Bolna), try to find
+    // the lead by phone number and link it before proceeding.
+    let leadId = call.lead_id;
+    if (!leadId && call.phone_number) {
+      const { normalizePhone } = await import("./phone");
+      const normalized = normalizePhone(call.phone_number);
+      if (normalized.length === 10) {
+        const [found] = await db
+          .select({ id: leadsTable.id })
+          .from(leadsTable)
+          .where(and(eq(leadsTable.org_id, call.org_id), eq(leadsTable.phone, normalized)))
+          .limit(1);
+        if (found) {
+          leadId = found.id;
+          // Back-fill lead_id on the call log so future lookups work
+          await db
+            .update(callLogsTable)
+            .set({ lead_id: leadId })
+            .where(eq(callLogsTable.id, call.id));
+        }
+      }
+    }
+
+    if (!leadId) return; // Cannot schedule a follow-up without a lead
+
     const text = [call.transcript ?? "", call.summary ?? ""].join(" ");
     const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
     if (!intent) return;
 
     await db.insert(followUpsTable).values({
       org_id: call.org_id,
-      lead_id: call.lead_id,
+      lead_id: leadId,
       type: "CALLBACK_REQUESTED",
       scheduled_at: intent.scheduledAt,
       bolna_agent_id: call.bolna_agent_id,
@@ -152,10 +176,10 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
     await db
       .update(leadsTable)
       .set({ next_followup_at: intent.scheduledAt })
-      .where(eq(leadsTable.id, call.lead_id));
+      .where(eq(leadsTable.id, leadId));
 
     logger.info(
-      { callId: call.id, leadId: call.lead_id, scheduledAt: intent.scheduledAt },
+      { callId: call.id, leadId, scheduledAt: intent.scheduledAt },
       "auto-scheduled callback follow-up from call transcript",
     );
   } catch (err) {

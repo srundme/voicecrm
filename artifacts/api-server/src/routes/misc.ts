@@ -329,31 +329,86 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     }
   }
 
+  // Bolna sends transcript/summary/recording in the webhook body itself.
+  // Extract them here as the primary source — getExecution may not have them
+  // ready yet if Bolna processes transcripts asynchronously after the webhook.
+  function strField(...keys: string[]): string | null {
+    for (const k of keys) {
+      const v = body[k];
+      if (v != null && String(v).trim() !== "") return String(v);
+    }
+    return null;
+  }
+  const bodyTranscript = strField("transcript", "conversation_transcript");
+  const bodySummary = strField("summary", "call_summary", "extracted_data");
+  const bodyRecording = strField("recording_url", "audio_url");
+  const bodyDuration = typeof body["duration_seconds"] === "number"
+    ? (body["duration_seconds"] as number)
+    : typeof body["duration"] === "number"
+    ? (body["duration"] as number)
+    : null;
+  const bodyStatus = strField("status") ?? "";
+  const bodyEnded = ["completed","stopped","error","failed","busy","no-answer","no_answer","cancelled","canceled"]
+    .includes(bodyStatus.toLowerCase());
+
   const exec = await bolna.getExecution(executionId);
   if (exec.success) {
-    const status = mapBolnaStatusToCallStatus(exec.data.status);
+    const status = mapBolnaStatusToCallStatus(exec.data.status || bodyStatus);
+
+    // Prefer webhook body fields over getExecution when the body has content
+    const transcript = bodyTranscript ?? exec.data.transcript ?? null;
+    const summary = bodySummary ?? exec.data.summary ?? null;
+    const recording_url = bodyRecording ?? exec.data.recording_url ?? null;
+    const duration_seconds = bodyDuration ?? exec.data.duration_seconds ?? null;
+    const isEnded = exec.data.ended || bodyEnded;
+
     const dropDetected =
-      !exec.data.ended ? false :
-      (exec.data.duration_seconds != null && exec.data.duration_seconds < 10) ||
+      !isEnded ? false :
+      (duration_seconds != null && duration_seconds < 10) ||
       ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status);
 
     const [updated] = await db
       .update(callLogsTable)
       .set({
         status,
-        transcript: exec.data.transcript,
-        summary: exec.data.summary,
-        recording_url: exec.data.recording_url,
-        duration_seconds: exec.data.duration_seconds,
-        ended_at: exec.data.ended ? new Date() : row.ended_at,
+        transcript,
+        summary,
+        recording_url,
+        duration_seconds,
+        ended_at: isEnded ? new Date() : row.ended_at,
         drop_detected: dropDetected,
       })
       .where(eq(callLogsTable.id, row.id))
       .returning();
-    if (updated && !exec.data.ended) {
+    if (updated && !isEnded) {
       startPolling(updated.id, executionId);
     }
-    if (updated && exec.data.ended && !dropDetected && status === "COMPLETED") {
+    if (updated && isEnded && !dropDetected && status === "COMPLETED") {
+      void maybeScheduleCallback(updated);
+    }
+    if (updated) {
+      const { emitCallUpdate } = await import("../lib/events");
+      emitCallUpdate(await serializeCallLog(updated));
+    }
+  } else if (bodyEnded) {
+    // getExecution failed but the webhook body says call ended — update from body only
+    const status = mapBolnaStatusToCallStatus(bodyStatus);
+    const dropDetected = (bodyDuration != null && bodyDuration < 10) ||
+      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status);
+    const [updated] = await db
+      .update(callLogsTable)
+      .set({
+        status,
+        transcript: bodyTranscript,
+        summary: bodySummary,
+        recording_url: bodyRecording,
+        duration_seconds: bodyDuration,
+        ended_at: new Date(),
+        drop_detected: dropDetected,
+      })
+      .where(eq(callLogsTable.id, row.id))
+      .returning();
+    if (updated && !dropDetected && status === "COMPLETED") {
       void maybeScheduleCallback(updated);
     }
     if (updated) {
