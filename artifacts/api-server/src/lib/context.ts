@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, or } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -10,7 +10,6 @@ import { DEFAULT_ORG_ID } from "./org";
 import { normalizePhone } from "./phone";
 
 const DROP_RETRY_WINDOW_MS = 15 * 60 * 1000;
-const PENDING_FOLLOWUP_WINDOW_MS = 5 * 60 * 1000;
 
 export type CallContext = {
   call_type:
@@ -87,10 +86,6 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
         eq(followUpsTable.lead_id, lead.id),
         eq(followUpsTable.status, "PENDING"),
         eq(followUpsTable.type, "CALLBACK_REQUESTED"),
-        lte(
-          followUpsTable.scheduled_at,
-          new Date(now + PENDING_FOLLOWUP_WINDOW_MS),
-        ),
       ),
     )
     .orderBy(desc(followUpsTable.scheduled_at))
