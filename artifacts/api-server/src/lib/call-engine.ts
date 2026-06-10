@@ -11,10 +11,15 @@ import { logger } from "./logger";
 // ── Callback intent parser ────────────────────────────────────────────────────
 
 const HINDI_NUMS: Record<string, number> = {
+  // Roman-script transliterations
   ek: 1, do: 2, teen: 3, char: 4, paanch: 5, chhe: 6, chhah: 6,
   saat: 7, aath: 8, nau: 9, das: 10, gyarah: 11, barah: 12,
+  // English
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
   seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  // Devanagari script words
+  "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5,
+  "छह": 6, "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11, "बारह": 12,
 };
 
 function toNum(s: string): number {
@@ -44,37 +49,51 @@ export function parseCallbackIntent(
 
   const lower = text.toLowerCase();
 
-  // Must contain a callback signal
+  // Must contain a callback signal — Roman, English, or Devanagari script
   const callbackSignals = [
+    // Roman-script Hindi
     "call back", "callback", "call kar", "call karo", "call karen", "call kijiye",
     "call karna", "wapas call", "phir call", "baad mein call", "baad call",
     "bad mein call", "call karti hoon", "call karta hoon", "call karenge",
     "call later", "call again",
+    // Devanagari script
+    "कॉल करो", "कॉल कर", "कॉल करूंगा", "कॉल करूंगी", "कॉल करेंगे",
+    "कॉल करना", "वापस कॉल", "बाद में कॉल", "कॉल करती", "कॉल करता",
   ];
-  if (!callbackSignals.some((s) => lower.includes(s))) return null;
+  if (!callbackSignals.some((s) => text.toLowerCase().includes(s.toLowerCase()) || text.includes(s))) return null;
 
-  // ── Relative: "X minute(s) baad" ─────────────────────────────────────────
+  // ── Relative: "X minute(s) baad" OR "after/in X minutes" (English summary) ──
+  // Pattern 1: number-first  "10 minute baad", "10 minutes after"
   const minRx = new RegExp(
-    `${NUM_PAT}\\s*(?:minute|minutes|min|mins)\\s*(?:baad|bad|ke baad|after|later)`,
+    `${NUM_PAT}\\s*(?:minute|minutes|min|mins|मिनट)\\s*(?:baad|bad|ke baad|after|later|के बाद|बाद)`,
     "i",
   );
-  const minMatch = lower.match(minRx);
+  // Pattern 2: word-first "after 10 minutes", "in 10 minutes" (AI-generated English summaries)
+  const minRxEn = /(?:after|in)\s+(\d+)\s+(?:minute|minutes|min)/i;
+
+  const minMatch = lower.match(minRx) ?? text.match(minRxEn);
   if (minMatch) {
     const n = toNum(minMatch[1]!);
-    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 1000);
-    return { scheduledAt, notes: `Customer requested callback in ${n} minute(s)` };
+    if (!isNaN(n) && n > 0) {
+      const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 1000);
+      return { scheduledAt, notes: `Customer requested callback in ${n} minute(s)` };
+    }
   }
 
-  // ── Relative: "X ghante/hour(s) baad" ────────────────────────────────────
+  // ── Relative: "X ghante/hour(s) baad" OR "after/in X hours" ──────────────
   const hrRx = new RegExp(
-    `${NUM_PAT}\\s*(?:ghante|ghanta|ghanta|hour|hours|hr|hrs)\\s*(?:baad|bad|ke baad|after|later)`,
+    `${NUM_PAT}\\s*(?:ghante|ghanta|hour|hours|hr|hrs|घंटे|घंटा)\\s*(?:baad|bad|ke baad|after|later|के बाद|बाद)`,
     "i",
   );
-  const hrMatch = lower.match(hrRx);
+  const hrRxEn = /(?:after|in)\s+(\d+)\s+(?:hour|hours|hr)/i;
+
+  const hrMatch = lower.match(hrRx) ?? text.match(hrRxEn);
   if (hrMatch) {
     const n = toNum(hrMatch[1]!);
-    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 60 * 1000);
-    return { scheduledAt, notes: `Customer requested callback in ${n} hour(s)` };
+    if (!isNaN(n) && n > 0) {
+      const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 60 * 1000);
+      return { scheduledAt, notes: `Customer requested callback in ${n} hour(s)` };
+    }
   }
 
   // ── Tomorrow / kal ────────────────────────────────────────────────────────
@@ -162,7 +181,10 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
     const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
     if (!intent) return;
 
-    // Dedup: if a CALLBACK_REQUESTED follow-up already exists for this call, skip.
+    // Dedup: only skip if a PENDING follow-up already exists for this exact call
+    // (guards against Bolna double-firing the same webhook within seconds).
+    // Do NOT skip if status is IN_PROGRESS or COMPLETED — those mean the
+    // previous callback already ran, and the customer is asking for another one.
     const [existing] = await db
       .select({ id: followUpsTable.id })
       .from(followUpsTable)
@@ -170,6 +192,7 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
         and(
           eq(followUpsTable.call_log_id, call.id),
           eq(followUpsTable.type, "CALLBACK_REQUESTED"),
+          eq(followUpsTable.status, "PENDING"),
         ),
       )
       .limit(1);
