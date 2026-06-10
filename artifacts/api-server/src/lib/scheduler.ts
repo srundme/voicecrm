@@ -12,6 +12,39 @@ import { ensureApiConfig, DEFAULT_ORG_ID } from "./org";
 import { logger } from "./logger";
 
 const TICK_INTERVAL_MS = 60_000;
+
+/**
+ * Build Bolna user_data variables for a CALLBACK_REQUESTED call.
+ * Passed as {{is_callback}}, {{callback_time}}, {{callback_opening}} template
+ * variables so the agent's system prompt can open the call contextually.
+ */
+function buildCallbackVars(notes: string | null): Record<string, string> {
+  // Extract time phrase from stored notes, e.g. "Customer requested callback in 2 minute(s)"
+  let callbackTime = "";
+  if (notes) {
+    const minMatch = notes.match(/in (\d+) minute/i);
+    const hrMatch = notes.match(/in (\d+) hour/i);
+    const tomorrowMatch = notes.match(/tomorrow/i);
+    const laterMatch = notes.match(/2 hours/i);
+    if (minMatch) callbackTime = `${minMatch[1]} minute`;
+    else if (hrMatch) callbackTime = `${hrMatch[1]} hour`;
+    else if (tomorrowMatch) callbackTime = "tomorrow";
+    else if (laterMatch) callbackTime = "2 hours";
+    else callbackTime = "the requested time";
+  }
+
+  // Pre-built Hindi opening line the agent can use directly
+  const callbackOpening = callbackTime
+    ? `Aapne humhe ${callbackTime} baad call karne ko kaha tha. Kya ab baat kar sakte hain?`
+    : `Aapne humhe wapas call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+
+  return {
+    is_callback: "true",
+    callback_time: callbackTime,
+    callback_opening: callbackOpening,
+  };
+}
+
 const RENEWAL_WINDOW_DAYS = 30;
 const TERMINAL_CALL_STATUSES = [
   "COMPLETED",
@@ -64,12 +97,19 @@ async function processFollowUp(
     return;
   }
 
+  // Build extra variables for callback calls so the agent can open with
+  // "Ji, aapne mujhe X baad call karne ko kaha tha. Kya ab baat kar sakte hain?"
+  const callbackVars =
+    followUp.type === "CALLBACK_REQUESTED"
+      ? buildCallbackVars(followUp.notes)
+      : {};
+
   const outcome = await triggerCall({
     agentId,
     phone: lead.phone,
     leadId: lead.id,
     callType: followUp.type.toLowerCase(),
-    variables: { name: lead.full_name },
+    variables: { name: lead.full_name, ...callbackVars },
   });
 
   if (outcome.success && outcome.call_log_id) {
