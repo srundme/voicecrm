@@ -273,9 +273,6 @@ router.post("/webhooks/website-form", async (req, res): Promise<void> => {
 router.post("/webhooks/bolna", async (req, res): Promise<void> => {
   const body = (req.body ?? {}) as Record<string, unknown>;
 
-  // DEBUG: log raw payload keys and values to diagnose phone extraction
-  logger.info({ bodyKeys: Object.keys(body), body }, "Bolna webhook: raw payload");
-
   const executionId = String(
     body["execution_id"] ?? body["call_id"] ?? body["id"] ?? "",
   );
@@ -291,10 +288,15 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
 
   // Call was made directly from Bolna (not via VoiceCRM) — create the log now.
   if (!row) {
+    // Bolna sends the callee's number as "user_number" (E.164 format, e.g. "+918904887300")
+    const telephonyData = (body["telephony_data"] ?? {}) as Record<string, unknown>;
     const rawPhone = String(
-      body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ?? "",
+      body["user_number"] ??
+      telephonyData["to_number"] ??
+      body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ??
+      (body["context_details"] as Record<string, unknown> | null)?.["recipient_phone_number"] ?? "",
     );
-    logger.info({ rawPhone, normalizedLen: rawPhone.replace(/\D/g, "").length }, "Bolna webhook: phone extraction");
+    logger.info({ rawPhone }, "Bolna webhook: phone extraction");
     const phone = normalizePhone(rawPhone);
     const agentId = String(body["agent_id"] ?? body["bolna_agent_id"] ?? "");
     const rawDir = String(body["direction"] ?? "outbound").toUpperCase();
@@ -345,13 +347,24 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     return null;
   }
   const bodyTranscript = strField("transcript", "conversation_transcript");
-  const bodySummary = strField("summary", "call_summary", "extracted_data");
-  const bodyRecording = strField("recording_url", "audio_url");
-  const bodyDuration = typeof body["duration_seconds"] === "number"
-    ? (body["duration_seconds"] as number)
-    : typeof body["duration"] === "number"
-    ? (body["duration"] as number)
-    : null;
+  const bodySummary = strField("summary", "call_summary");
+
+  // telephony_data contains the actual call duration and recording URL
+  const td = (body["telephony_data"] ?? {}) as Record<string, unknown>;
+  const bodyRecording: string | null =
+    (td["recording_url"] != null && String(td["recording_url"]).trim() !== "" ? String(td["recording_url"]) : null) ??
+    strField("recording_url", "audio_url");
+
+  // Use telephony_data.duration (actual phone call duration) — NOT conversation_duration
+  // which only counts the AI-side speech and is 0 when caller says nothing.
+  const bodyDuration: number | null =
+    typeof td["duration"] === "number" && (td["duration"] as number) > 0
+      ? (td["duration"] as number)
+      : typeof body["duration_seconds"] === "number"
+      ? (body["duration_seconds"] as number)
+      : typeof body["duration"] === "number"
+      ? (body["duration"] as number)
+      : null;
   const bodyStatus = strField("status") ?? "";
   const bodyEnded = ["completed","stopped","error","failed","busy","no-answer","no_answer","cancelled","canceled"]
     .includes(bodyStatus.toLowerCase());
