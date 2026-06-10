@@ -15,6 +15,7 @@ import { Link } from "wouter";
 import { formatPhone, formatDateTime, formatDuration } from "@/lib/format";
 import { Search, Loader2, ChevronDown, ChevronRight, Download, RefreshCw, ShieldCheck, ShieldAlert, ShieldX, Shield, CheckCircle2, XCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 type ComplianceStatus = "PASS" | "WARNING" | "FAIL" | "PENDING" | "SKIPPED";
@@ -390,8 +391,8 @@ export default function Calls() {
                 <TableRow><TableCell colSpan={8} className="h-32 text-center text-muted-foreground">No calls found matching your criteria.</TableCell></TableRow>
               ) : (
                 data?.data.map((call) => (
-                  <>
-                    <TableRow key={call.id} className="group hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setExpanded(expanded === call.id ? null : call.id)}>
+                  <Fragment key={call.id}>
+                    <TableRow className="group hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setExpanded(expanded === call.id ? null : call.id)}>
                       <TableCell>{expanded === call.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}</TableCell>
                       <TableCell className="font-medium">
                         {call.lead_id ? (
@@ -422,13 +423,13 @@ export default function Calls() {
                       <TableCell className="text-sm text-muted-foreground">{formatDateTime(call.started_at)}</TableCell>
                     </TableRow>
                     {expanded === call.id && (
-                      <TableRow key={`${call.id}-detail`}>
+                      <TableRow>
                         <TableCell colSpan={8} className="p-0">
                           <CallRowDetail id={call.id} agentId={call.bolna_agent_id} status={call.status} dropDetected={call.drop_detected} />
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))
               )}
             </TableBody>
