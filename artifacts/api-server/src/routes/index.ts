@@ -12,6 +12,7 @@ import dashboardRouter from "./dashboard";
 import leadSourcesRouter from "./lead-sources";
 import teamRouter from "./team";
 import miscRouter from "./misc";
+import campaignsRouter from "./campaigns";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(dashboardRouter);
 router.use(leadSourcesRouter);
 router.use(teamRouter);
 router.use(miscRouter);
+router.use(campaignsRouter);
 
 export default router;
