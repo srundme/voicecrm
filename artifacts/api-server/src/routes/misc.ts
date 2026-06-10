@@ -1,0 +1,348 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { and, desc, eq } from "drizzle-orm";
+import {
+  db,
+  leadsTable,
+  policiesTable,
+  callLogsTable,
+  webhookLogsTable,
+} from "@workspace/db";
+import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
+import { normalizePhone } from "../lib/phone";
+import { liveFeed, type LiveFeedEvent } from "../lib/events";
+import { triggerCall, startPolling } from "../lib/call-engine";
+import {
+  bolna,
+  mapBolnaStatusToCallStatus,
+} from "../lib/bolna";
+import { serializeCallLog } from "../lib/serialize";
+import { logger } from "../lib/logger";
+
+const router: IRouter = Router();
+
+router.get("/live-feed", async (req, res): Promise<void> => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  res.write(`event: ping\ndata: {}\n\n`);
+
+  const onEvent = (payload: LiveFeedEvent): void => {
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  };
+  liveFeed.on("event", onEvent);
+
+  const heartbeat = setInterval(() => {
+    res.write(`event: ping\ndata: {}\n\n`);
+  }, 25000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    liveFeed.off("event", onEvent);
+    res.end();
+  });
+});
+
+async function authorizeContext(req: Request): Promise<boolean> {
+  const cfg = await ensureApiConfig();
+  const header = req.header("authorization") ?? "";
+  const token = header.replace(/^Bearer\s+/i, "").trim();
+  return token.length > 0 && token === cfg.context_api_bearer_token;
+}
+
+function resolvePhone(req: Request): string | null {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const candidate =
+    body["phone"] ??
+    body["recipient_phone_number"] ??
+    body["caller"] ??
+    req.query["phone"];
+  if (!candidate) return null;
+  return normalizePhone(String(candidate));
+}
+
+async function buildContext(phone: string) {
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)));
+
+  if (!lead) {
+    return {
+      found: false,
+      call_type: "new_prospect",
+      name: "",
+      phone,
+    };
+  }
+
+  const policies = await db
+    .select()
+    .from(policiesTable)
+    .where(eq(policiesTable.lead_id, lead.id))
+    .orderBy(desc(policiesTable.created_at));
+
+  let callType = "sales";
+  const now = Date.now();
+  const upcomingRenewal = policies.find(
+    (p) =>
+      p.renewal_date &&
+      p.renewal_date.getTime() - now < 30 * 24 * 60 * 60 * 1000 &&
+      p.renewal_date.getTime() - now > -7 * 24 * 60 * 60 * 1000,
+  );
+  if (upcomingRenewal) callType = "renewal_reminder";
+  else if (lead.stage === "POLICY_ISSUED") callType = "service";
+  else if (policies.length > 0) callType = "existing_customer";
+
+  return {
+    found: true,
+    call_type: callType,
+    lead_id: lead.id,
+    name: lead.full_name,
+    gender: lead.gender,
+    phone: lead.phone,
+    city: lead.city,
+    state: lead.state,
+    insurance_type: lead.insurance_type,
+    stage: lead.stage,
+    premium_budget: lead.premium_budget,
+    sum_assured_interest: lead.sum_assured_interest,
+    policies: policies.map((p) => ({
+      policy_number: p.policy_number,
+      insurer_name: p.insurer_name,
+      policy_type: p.policy_type,
+      annual_premium: p.annual_premium,
+      renewal_date: p.renewal_date,
+      status: p.status,
+    })),
+  };
+}
+
+async function handleContext(req: Request, res: Response): Promise<void> {
+  if (!(await authorizeContext(req))) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const phone = resolvePhone(req);
+  if (!phone) {
+    res.status(400).json({ error: "Missing phone" });
+    return;
+  }
+  res.json(await buildContext(phone));
+}
+
+router.get("/context", handleContext);
+router.post("/context", handleContext);
+
+function checkSecret(req: Request, secret: string): boolean {
+  const provided = String(req.query["secret"] ?? "");
+  return provided.length > 0 && provided === secret;
+}
+
+async function logWebhook(
+  source: string,
+  status: string,
+  message: string,
+): Promise<void> {
+  await db
+    .insert(webhookLogsTable)
+    .values({ org_id: DEFAULT_ORG_ID, source, status, message });
+}
+
+function pickField(
+  data: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const k of keys) {
+    const v = data[k];
+    if (v != null && String(v).trim() !== "") return String(v);
+  }
+  return null;
+}
+
+async function ingestLead(opts: {
+  source: "META_ADS" | "WEBSITE_FORM";
+  sourceLabel: string;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  city: string | null;
+  insuranceType: string | null;
+  campaignId?: string | null;
+  formId?: string | null;
+}): Promise<{ ok: boolean; message: string }> {
+  if (!opts.fullName || !opts.phone) {
+    return { ok: false, message: "Missing name or phone" };
+  }
+  const phone = normalizePhone(opts.phone);
+  if (phone.length !== 10) {
+    return { ok: false, message: "Invalid phone" };
+  }
+  const existing = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)));
+  if (existing[0]) {
+    return { ok: false, message: "Duplicate lead" };
+  }
+  const insType = (opts.insuranceType ?? "").toUpperCase();
+  const [lead] = await db
+    .insert(leadsTable)
+    .values({
+      org_id: DEFAULT_ORG_ID,
+      full_name: opts.fullName,
+      phone,
+      email: opts.email,
+      city: opts.city,
+      insurance_type: [
+        "LIFE",
+        "HEALTH",
+        "MOTOR",
+        "TERM",
+        "ULIP",
+        "ENDOWMENT",
+        "ACCIDENT",
+        "TRAVEL",
+      ].includes(insType)
+        ? insType
+        : null,
+      source: opts.source,
+      source_campaign_id: opts.campaignId ?? null,
+      source_form_id: opts.formId ?? null,
+    })
+    .returning();
+
+  void (async () => {
+    try {
+      const { automationsTable } = await import("@workspace/db");
+      const autos = await db
+        .select()
+        .from(automationsTable)
+        .where(
+          and(
+            eq(automationsTable.org_id, DEFAULT_ORG_ID),
+            eq(automationsTable.type, "AUTO_CALL_ON_LEAD"),
+            eq(automationsTable.is_active, true),
+          ),
+        );
+      if (autos[0] && lead) {
+        await triggerCall({
+          agentId: autos[0].bolna_agent_id,
+          phone: lead.phone,
+          leadId: lead.id,
+          callType: "new_lead",
+        });
+      }
+    } catch (err) {
+      logger.error({ err }, "auto-call after webhook lead failed");
+    }
+  })();
+
+  return { ok: true, message: `Lead created: ${lead!.id}` };
+}
+
+router.post("/webhooks/meta", async (req, res): Promise<void> => {
+  const cfg = await ensureApiConfig();
+  if (!checkSecret(req, cfg.webhook_secret)) {
+    res.status(401).json({ error: "Invalid secret" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const fieldData: Record<string, unknown> = {};
+  const rawFields = body["field_data"];
+  if (Array.isArray(rawFields)) {
+    for (const f of rawFields as Record<string, unknown>[]) {
+      const name = String(f["name"] ?? "");
+      const values = f["values"];
+      fieldData[name] = Array.isArray(values) ? values[0] : f["value"];
+    }
+  }
+  const merged = { ...body, ...fieldData };
+
+  const result = await ingestLead({
+    source: "META_ADS",
+    sourceLabel: "Meta Ads",
+    fullName: pickField(merged, ["full_name", "name", "fullName"]),
+    phone: pickField(merged, ["phone", "phone_number", "phoneNumber"]),
+    email: pickField(merged, ["email"]),
+    city: pickField(merged, ["city"]),
+    insuranceType: pickField(merged, ["insurance_type", "insuranceType"]),
+    campaignId: pickField(merged, ["campaign_id", "campaignId"]),
+    formId: pickField(merged, ["form_id", "formId"]),
+  });
+
+  await logWebhook("META_ADS", result.ok ? "SUCCESS" : "SKIPPED", result.message);
+  res.json({ received: true, ...result });
+});
+
+router.post("/webhooks/website-form", async (req, res): Promise<void> => {
+  const cfg = await ensureApiConfig();
+  if (!checkSecret(req, cfg.webhook_secret)) {
+    res.status(401).json({ error: "Invalid secret" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const result = await ingestLead({
+    source: "WEBSITE_FORM",
+    sourceLabel: "Website Form",
+    fullName: pickField(body, ["full_name", "name", "fullName"]),
+    phone: pickField(body, ["phone", "phone_number", "mobile"]),
+    email: pickField(body, ["email"]),
+    city: pickField(body, ["city"]),
+    insuranceType: pickField(body, ["insurance_type", "insuranceType"]),
+  });
+
+  await logWebhook(
+    "WEBSITE_FORM",
+    result.ok ? "SUCCESS" : "SKIPPED",
+    result.message,
+  );
+  res.json({ received: true, ...result });
+});
+
+router.post("/webhooks/bolna", async (req, res): Promise<void> => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const executionId = String(
+    body["execution_id"] ?? body["call_id"] ?? body["id"] ?? "",
+  );
+  if (!executionId) {
+    res.json({ received: true });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(callLogsTable)
+    .where(eq(callLogsTable.bolna_execution_id, executionId));
+  if (!row) {
+    res.json({ received: true });
+    return;
+  }
+  const exec = await bolna.getExecution(executionId);
+  if (exec.success) {
+    const status = mapBolnaStatusToCallStatus(exec.data.status);
+    const [updated] = await db
+      .update(callLogsTable)
+      .set({
+        status,
+        transcript: exec.data.transcript,
+        summary: exec.data.summary,
+        recording_url: exec.data.recording_url,
+        duration_seconds: exec.data.duration_seconds,
+        ended_at: exec.data.ended ? new Date() : row.ended_at,
+      })
+      .where(eq(callLogsTable.id, row.id))
+      .returning();
+    if (updated && !exec.data.ended) {
+      startPolling(updated.id, executionId);
+    }
+    if (updated) {
+      const { emitCallUpdate } = await import("../lib/events");
+      emitCallUpdate(await serializeCallLog(updated));
+    }
+  }
+  res.json({ received: true });
+});
+
+export default router;

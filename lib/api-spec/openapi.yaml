@@ -10,6 +10,28 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: settings
+    description: API config and settings
+  - name: leads
+    description: CRM leads
+  - name: policies
+    description: Insurance policies
+  - name: followups
+    description: Follow-ups
+  - name: calllogs
+    description: Call logs
+  - name: dispositions
+    description: Dispositions
+  - name: automations
+    description: Automations
+  - name: agents
+    description: Bolna agents and phone numbers
+  - name: dashboard
+    description: Dashboard aggregates
+  - name: leadsources
+    description: Lead sources
+  - name: team
+    description: Team members
 paths:
   /healthz:
     get:
@@ -24,6 +46,932 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /settings/api-config:
+    get:
+      operationId: getApiConfig
+      tags: [settings]
+      summary: Get API config
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiConfig"
+    put:
+      operationId: updateApiConfig
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApiConfigUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiConfig"
+
+  /settings/test-connection/{service}:
+    post:
+      operationId: testConnection
+      tags: [settings]
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [bolna, brevo, meta]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TestConnectionResult"
+
+  /leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+        - name: stage
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/LeadStage" }
+        - name: source
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/LeadSource" }
+        - name: insuranceType
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/InsuranceType" }
+        - name: city
+          in: query
+          required: false
+          schema: { type: string }
+        - name: assignedTo
+          in: query
+          required: false
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: dateTo
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: sortBy
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created_at, last_contacted_at, next_followup_at]
+        - name: sortDir
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadList"
+    post:
+      operationId: createLead
+      tags: [leads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadDetail"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /leads/{id}/timeline:
+    get:
+      operationId: getLeadTimeline
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimelineEvent"
+
+  /leads/{id}/notes:
+    post:
+      operationId: addLeadNote
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoteInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+
+  /leads/{id}/call:
+    post:
+      operationId: triggerLeadCall
+      tags: [leads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerCallInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerCallResult"
+
+  /leads/bulk-import:
+    post:
+      operationId: bulkImportLeads
+      tags: [leads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkImportInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkImportResult"
+
+  /policies:
+    get:
+      operationId: listPolicies
+      tags: [policies]
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+        - name: policyType
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/InsuranceType" }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/PolicyStatus" }
+        - name: insurer
+          in: query
+          required: false
+          schema: { type: string }
+        - name: renewalFrom
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: renewalTo
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Policy"
+    post:
+      operationId: createPolicy
+      tags: [policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+
+  /policies/{id}:
+    get:
+      operationId: getPolicy
+      tags: [policies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+    patch:
+      operationId: updatePolicy
+      tags: [policies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicyUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Policy"
+    delete:
+      operationId: deletePolicy
+      tags: [policies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /follow-ups:
+    get:
+      operationId: listFollowUps
+      tags: [followups]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/FollowUpStatus" }
+        - name: type
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/FollowUpType" }
+        - name: dateFrom
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: dateTo
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FollowUp"
+    post:
+      operationId: createFollowUp
+      tags: [followups]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUp"
+
+  /follow-ups/{id}:
+    patch:
+      operationId: updateFollowUp
+      tags: [followups]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowUpUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUp"
+    delete:
+      operationId: deleteFollowUp
+      tags: [followups]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /follow-ups/{id}/call:
+    post:
+      operationId: triggerFollowUpCall
+      tags: [followups]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerCallResult"
+
+  /call-logs:
+    get:
+      operationId: listCallLogs
+      tags: [calllogs]
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+        - name: agentId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/CallStatus" }
+        - name: dispositionId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: direction
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/CallDir" }
+        - name: hasRecording
+          in: query
+          required: false
+          schema: { type: boolean }
+        - name: dateFrom
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: dateTo
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLogList"
+
+  /call-logs/{id}:
+    get:
+      operationId: getCallLog
+      tags: [calllogs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLog"
+
+  /call-logs/{id}/disposition:
+    patch:
+      operationId: updateCallLogDisposition
+      tags: [calllogs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispositionAssignInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLog"
+
+  /call-logs/{id}/retry:
+    post:
+      operationId: retryCall
+      tags: [calllogs]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerCallResult"
+
+  /dispositions:
+    get:
+      operationId: listDispositions
+      tags: [dispositions]
+      parameters:
+        - name: agentId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Disposition"
+    post:
+      operationId: createDisposition
+      tags: [dispositions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispositionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Disposition"
+
+  /dispositions/{id}:
+    patch:
+      operationId: updateDisposition
+      tags: [dispositions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispositionUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Disposition"
+    delete:
+      operationId: deleteDisposition
+      tags: [dispositions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /automations:
+    get:
+      operationId: listAutomations
+      tags: [automations]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Automation"
+    post:
+      operationId: createAutomation
+      tags: [automations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutomationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Automation"
+
+  /automations/{id}:
+    patch:
+      operationId: updateAutomation
+      tags: [automations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutomationUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Automation"
+    delete:
+      operationId: deleteAutomation
+      tags: [automations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+
+  /agents/test-call:
+    post:
+      operationId: testCall
+      tags: [agents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestCallInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TriggerCallResult"
+
+  /phone-numbers:
+    get:
+      operationId: listPhoneNumbers
+      tags: [agents]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhoneNumberList"
+
+  /phone-numbers/{id}/agent:
+    post:
+      operationId: setInboundAgent
+      tags: [agents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundAgentInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationResult"
+    delete:
+      operationId: removeInboundAgent
+      tags: [agents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationResult"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/funnel:
+    get:
+      operationId: getLeadFunnel
+      tags: [dashboard]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FunnelStage"
+
+  /dashboard/recent-calls:
+    get:
+      operationId: getRecentCalls
+      tags: [dashboard]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallLog"
+
+  /dashboard/today-followups:
+    get:
+      operationId: getTodayFollowUps
+      tags: [dashboard]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FollowUp"
+
+  /lead-sources/recent-meta-leads:
+    get:
+      operationId: getRecentMetaLeads
+      tags: [leadsources]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+
+  /lead-sources/import-history:
+    get:
+      operationId: getImportHistory
+      tags: [leadsources]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ImportHistoryEntry"
+
+  /webhooks/logs:
+    get:
+      operationId: getWebhookLogs
+      tags: [leadsources]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookLog"
+
+  /team:
+    get:
+      operationId: listTeamMembers
+      tags: [team]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamMember"
+    post:
+      operationId: inviteTeamMember
+      tags: [team]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamMemberInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamMember"
+
+  /team/{id}:
+    delete:
+      operationId: removeTeamMember
+      tags: [team]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +982,596 @@ components:
       required:
         - status
 
+    Gender:
+      type: string
+      enum: [MALE, FEMALE, OTHER]
+    InsuranceType:
+      type: string
+      enum: [LIFE, HEALTH, MOTOR, TERM, ULIP, ENDOWMENT, ACCIDENT, TRAVEL]
+    LeadSource:
+      type: string
+      enum: [META_ADS, WEBSITE_FORM, CSV_UPLOAD, MANUAL, INBOUND_CALL, REFERRAL]
+    LeadStage:
+      type: string
+      enum: [NEW, CONTACTED, INTERESTED, DOCS_PENDING, POLICY_ISSUED, RENEWAL_DUE, LOST, DO_NOT_CALL]
+    PolicyStatus:
+      type: string
+      enum: [ACTIVE, LAPSED, SURRENDERED, MATURED, CLAIMED]
+    PremiumFreq:
+      type: string
+      enum: [MONTHLY, QUARTERLY, HALF_YEARLY, YEARLY, SINGLE]
+    CallDir:
+      type: string
+      enum: [OUTBOUND, INBOUND]
+    CallStatus:
+      type: string
+      enum: [INITIATED, RINGING, IN_PROGRESS, COMPLETED, FAILED, NO_ANSWER, BUSY, CANCELLED]
+    AutomationType:
+      type: string
+      enum: [AUTO_CALL_ON_LEAD, RETRY_ON_DROP, SCHEDULED_FOLLOWUP, MONTHLY_CHECKIN]
+    FollowUpType:
+      type: string
+      enum: [RENEWAL_REMINDER, MONTHLY_CHECKIN, CALLBACK_REQUESTED, MANUAL, POLICY_ANNIVERSARY]
+    FollowUpStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, COMPLETED, SKIPPED, RESCHEDULED]
+
+    ApiConfig:
+      type: object
+      required: [id, org_id, bolna_base_url, webhook_secret, context_api_bearer_token, context_api_url, meta_webhook_url, website_form_webhook_url]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        bolna_api_key: { type: ["string", "null"] }
+        bolna_base_url: { type: string }
+        brevo_api_key: { type: ["string", "null"] }
+        brevo_sender_name: { type: ["string", "null"] }
+        meta_ads_access_token: { type: ["string", "null"] }
+        meta_ads_account_id: { type: ["string", "null"] }
+        webhook_secret: { type: string }
+        context_api_bearer_token: { type: string }
+        monthly_checkin_agent_id: { type: ["string", "null"] }
+        sms_on_lead_created: { type: boolean }
+        sms_on_call_scheduled: { type: boolean }
+        email_renewal_reminders: { type: boolean }
+        context_api_url: { type: string }
+        meta_webhook_url: { type: string }
+        website_form_webhook_url: { type: string }
+        updated_at: { type: string, format: date-time }
+    ApiConfigUpdate:
+      type: object
+      properties:
+        bolna_api_key: { type: string }
+        bolna_base_url: { type: string }
+        brevo_api_key: { type: string }
+        brevo_sender_name: { type: string }
+        meta_ads_access_token: { type: string }
+        meta_ads_account_id: { type: string }
+        monthly_checkin_agent_id: { type: string }
+        sms_on_lead_created: { type: boolean }
+        sms_on_call_scheduled: { type: boolean }
+        email_renewal_reminders: { type: boolean }
+    TestConnectionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        message: { type: ["string", "null"] }
+
+    Lead:
+      type: object
+      required: [id, org_id, full_name, gender, phone, source, stage, tags, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        full_name: { type: string }
+        gender: { $ref: "#/components/schemas/Gender" }
+        dob: { type: ["string", "null"], format: date-time }
+        age: { type: ["integer", "null"] }
+        phone: { type: string }
+        phone_alt: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        address_line1: { type: ["string", "null"] }
+        address_line2: { type: ["string", "null"] }
+        city: { type: ["string", "null"] }
+        state: { type: ["string", "null"] }
+        pincode: { type: ["string", "null"] }
+        pan_number: { type: ["string", "null"] }
+        aadhaar_number: { type: ["string", "null"] }
+        occupation: { type: ["string", "null"] }
+        annual_income: { type: ["integer", "null"] }
+        employer_name: { type: ["string", "null"] }
+        insurance_type: { oneOf: [ { $ref: "#/components/schemas/InsuranceType" }, { type: "null" } ] }
+        sum_assured_interest: { type: ["integer", "null"] }
+        premium_budget: { type: ["integer", "null"] }
+        source: { $ref: "#/components/schemas/LeadSource" }
+        source_campaign_id: { type: ["string", "null"] }
+        source_form_id: { type: ["string", "null"] }
+        stage: { $ref: "#/components/schemas/LeadStage" }
+        assigned_to: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        tags:
+          type: array
+          items: { type: string }
+        last_contacted_at: { type: ["string", "null"], format: date-time }
+        next_followup_at: { type: ["string", "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LeadDetail:
+      allOf:
+        - $ref: "#/components/schemas/Lead"
+        - type: object
+          properties:
+            policies:
+              type: array
+              items: { $ref: "#/components/schemas/Policy" }
+            call_logs:
+              type: array
+              items: { $ref: "#/components/schemas/CallLog" }
+            follow_ups:
+              type: array
+              items: { $ref: "#/components/schemas/FollowUp" }
+    LeadInput:
+      type: object
+      required: [full_name, phone]
+      properties:
+        full_name: { type: string, minLength: 1 }
+        gender: { $ref: "#/components/schemas/Gender" }
+        dob: { type: string, format: date-time }
+        age: { type: integer }
+        phone: { type: string }
+        phone_alt: { type: string }
+        email: { type: string }
+        address_line1: { type: string }
+        address_line2: { type: string }
+        city: { type: string }
+        state: { type: string }
+        pincode: { type: string }
+        pan_number: { type: string }
+        aadhaar_number: { type: string }
+        occupation: { type: string }
+        annual_income: { type: integer }
+        employer_name: { type: string }
+        insurance_type: { $ref: "#/components/schemas/InsuranceType" }
+        sum_assured_interest: { type: integer }
+        premium_budget: { type: integer }
+        source: { $ref: "#/components/schemas/LeadSource" }
+        stage: { $ref: "#/components/schemas/LeadStage" }
+        assigned_to: { type: string }
+        notes: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        next_followup_at: { type: string, format: date-time }
+    LeadUpdate:
+      type: object
+      properties:
+        full_name: { type: string }
+        gender: { $ref: "#/components/schemas/Gender" }
+        dob: { type: ["string", "null"], format: date-time }
+        age: { type: ["integer", "null"] }
+        phone: { type: string }
+        phone_alt: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        address_line1: { type: ["string", "null"] }
+        address_line2: { type: ["string", "null"] }
+        city: { type: ["string", "null"] }
+        state: { type: ["string", "null"] }
+        pincode: { type: ["string", "null"] }
+        pan_number: { type: ["string", "null"] }
+        aadhaar_number: { type: ["string", "null"] }
+        occupation: { type: ["string", "null"] }
+        annual_income: { type: ["integer", "null"] }
+        employer_name: { type: ["string", "null"] }
+        insurance_type: { oneOf: [ { $ref: "#/components/schemas/InsuranceType" }, { type: "null" } ] }
+        sum_assured_interest: { type: ["integer", "null"] }
+        premium_budget: { type: ["integer", "null"] }
+        stage: { $ref: "#/components/schemas/LeadStage" }
+        assigned_to: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        tags:
+          type: array
+          items: { type: string }
+        next_followup_at: { type: ["string", "null"], format: date-time }
+    LeadList:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Lead" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    NoteInput:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string, minLength: 1 }
+
+    TriggerCallInput:
+      type: object
+      required: [agent_id]
+      properties:
+        agent_id: { type: string }
+    TriggerCallResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        call_log_id: { type: ["string", "null"] }
+        execution_id: { type: ["string", "null"] }
+        error: { type: ["string", "null"] }
+
+    BulkImportInput:
+      type: object
+      required: [rows]
+      properties:
+        trigger_calls: { type: boolean }
+        agent_id: { type: string }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/BulkImportRow" }
+    BulkImportRow:
+      type: object
+      properties:
+        full_name: { type: string }
+        phone: { type: string }
+        gender: { type: string }
+        dob: { type: string }
+        email: { type: string }
+        city: { type: string }
+        state: { type: string }
+        pincode: { type: string }
+        insurance_type: { type: string }
+        notes: { type: string }
+    BulkImportResult:
+      type: object
+      required: [imported, skipped_duplicates, skipped_invalid, errors]
+      properties:
+        imported: { type: integer }
+        skipped_duplicates: { type: integer }
+        skipped_invalid: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+
+    Policy:
+      type: object
+      required: [id, org_id, lead_id, policy_type, premium_frequency, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        lead_id: { type: string }
+        lead_name: { type: ["string", "null"] }
+        policy_number: { type: ["string", "null"] }
+        insurer_name: { type: ["string", "null"] }
+        policy_type: { $ref: "#/components/schemas/InsuranceType" }
+        sum_assured: { type: ["integer", "null"] }
+        annual_premium: { type: ["integer", "null"] }
+        premium_frequency: { $ref: "#/components/schemas/PremiumFreq" }
+        start_date: { type: ["string", "null"], format: date-time }
+        end_date: { type: ["string", "null"], format: date-time }
+        renewal_date: { type: ["string", "null"], format: date-time }
+        nominee_name: { type: ["string", "null"] }
+        nominee_relation: { type: ["string", "null"] }
+        nominee_dob: { type: ["string", "null"], format: date-time }
+        status: { $ref: "#/components/schemas/PolicyStatus" }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyDocument" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PolicyDocument:
+      type: object
+      required: [name, url]
+      properties:
+        name: { type: string }
+        url: { type: string }
+    PolicyInput:
+      type: object
+      required: [lead_id, policy_type]
+      properties:
+        lead_id: { type: string }
+        policy_number: { type: string }
+        insurer_name: { type: string }
+        policy_type: { $ref: "#/components/schemas/InsuranceType" }
+        sum_assured: { type: integer }
+        annual_premium: { type: integer }
+        premium_frequency: { $ref: "#/components/schemas/PremiumFreq" }
+        start_date: { type: string, format: date-time }
+        end_date: { type: string, format: date-time }
+        renewal_date: { type: string, format: date-time }
+        nominee_name: { type: string }
+        nominee_relation: { type: string }
+        nominee_dob: { type: string, format: date-time }
+        status: { $ref: "#/components/schemas/PolicyStatus" }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyDocument" }
+    PolicyUpdate:
+      type: object
+      properties:
+        policy_number: { type: ["string", "null"] }
+        insurer_name: { type: ["string", "null"] }
+        policy_type: { $ref: "#/components/schemas/InsuranceType" }
+        sum_assured: { type: ["integer", "null"] }
+        annual_premium: { type: ["integer", "null"] }
+        premium_frequency: { $ref: "#/components/schemas/PremiumFreq" }
+        start_date: { type: ["string", "null"], format: date-time }
+        end_date: { type: ["string", "null"], format: date-time }
+        renewal_date: { type: ["string", "null"], format: date-time }
+        nominee_name: { type: ["string", "null"] }
+        nominee_relation: { type: ["string", "null"] }
+        nominee_dob: { type: ["string", "null"], format: date-time }
+        status: { $ref: "#/components/schemas/PolicyStatus" }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/PolicyDocument" }
+
+    CallLog:
+      type: object
+      required: [id, org_id, bolna_execution_id, bolna_agent_id, direction, phone_number, status, started_at, drop_detected, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        lead_id: { type: ["string", "null"] }
+        lead_name: { type: ["string", "null"] }
+        bolna_execution_id: { type: string }
+        bolna_agent_id: { type: string }
+        agent_name: { type: ["string", "null"] }
+        direction: { $ref: "#/components/schemas/CallDir" }
+        phone_number: { type: string }
+        status: { $ref: "#/components/schemas/CallStatus" }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: ["string", "null"], format: date-time }
+        duration_seconds: { type: ["integer", "null"] }
+        transcript: { type: ["string", "null"] }
+        summary: { type: ["string", "null"] }
+        recording_url: { type: ["string", "null"] }
+        disposition_id: { type: ["string", "null"] }
+        disposition: { oneOf: [ { $ref: "#/components/schemas/Disposition" }, { type: "null" } ] }
+        drop_detected: { type: boolean }
+        drop_reason: { type: ["string", "null"] }
+        retry_of_call_id: { type: ["string", "null"] }
+        retry_call_id: { type: ["string", "null"] }
+        call_type: { type: ["string", "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CallLogList:
+      type: object
+      required: [data, total, page, pageSize]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CallLog" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+    DispositionAssignInput:
+      type: object
+      required: [disposition_id]
+      properties:
+        disposition_id: { type: string }
+
+    Disposition:
+      type: object
+      required: [id, org_id, bolna_agent_id, label, color, is_active, sort_order, created_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        bolna_agent_id: { type: string }
+        label: { type: string }
+        color: { type: string }
+        description: { type: ["string", "null"] }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+        created_at: { type: string, format: date-time }
+    DispositionInput:
+      type: object
+      required: [bolna_agent_id, label]
+      properties:
+        bolna_agent_id: { type: string }
+        label: { type: string, minLength: 1 }
+        color: { type: string }
+        description: { type: string }
+        sort_order: { type: integer }
+    DispositionUpdate:
+      type: object
+      properties:
+        label: { type: string }
+        color: { type: string }
+        description: { type: ["string", "null"] }
+        is_active: { type: boolean }
+        sort_order: { type: integer }
+
+    Automation:
+      type: object
+      required: [id, org_id, name, type, bolna_agent_id, trigger_config, is_active, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/AutomationType" }
+        bolna_agent_id: { type: string }
+        trigger_config: { type: object, additionalProperties: true }
+        is_active: { type: boolean }
+        last_triggered_at: { type: ["string", "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AutomationInput:
+      type: object
+      required: [name, type, bolna_agent_id]
+      properties:
+        name: { type: string, minLength: 1 }
+        type: { $ref: "#/components/schemas/AutomationType" }
+        bolna_agent_id: { type: string }
+        trigger_config: { type: object, additionalProperties: true }
+        is_active: { type: boolean }
+    AutomationUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        bolna_agent_id: { type: string }
+        trigger_config: { type: object, additionalProperties: true }
+        is_active: { type: boolean }
+
+    FollowUp:
+      type: object
+      required: [id, org_id, lead_id, type, scheduled_at, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        lead_id: { type: string }
+        lead_name: { type: ["string", "null"] }
+        policy_id: { type: ["string", "null"] }
+        type: { $ref: "#/components/schemas/FollowUpType" }
+        scheduled_at: { type: string, format: date-time }
+        completed_at: { type: ["string", "null"], format: date-time }
+        bolna_agent_id: { type: ["string", "null"] }
+        call_log_id: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        status: { $ref: "#/components/schemas/FollowUpStatus" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    FollowUpInput:
+      type: object
+      required: [lead_id, type, scheduled_at]
+      properties:
+        lead_id: { type: string }
+        policy_id: { type: string }
+        type: { $ref: "#/components/schemas/FollowUpType" }
+        scheduled_at: { type: string, format: date-time }
+        bolna_agent_id: { type: string }
+        notes: { type: string }
+    FollowUpUpdate:
+      type: object
+      properties:
+        type: { $ref: "#/components/schemas/FollowUpType" }
+        scheduled_at: { type: string, format: date-time }
+        bolna_agent_id: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        status: { $ref: "#/components/schemas/FollowUpStatus" }
+
+    TimelineEvent:
+      type: object
+      required: [id, kind, title, timestamp]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [call, stage_change, note, source] }
+        title: { type: string }
+        detail: { type: ["string", "null"] }
+        timestamp: { type: string, format: date-time }
+
+    Agent:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        phone_numbers:
+          type: array
+          items: { type: string }
+        calls_today: { type: integer }
+    AgentList:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean }
+        error: { type: ["string", "null"] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Agent" }
+
+    PhoneNumber:
+      type: object
+      required: [id, phone_number]
+      properties:
+        id: { type: string }
+        phone_number: { type: string }
+        agent_id: { type: ["string", "null"] }
+        agent_name: { type: ["string", "null"] }
+    PhoneNumberList:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean }
+        error: { type: ["string", "null"] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PhoneNumber" }
+
+    TestCallInput:
+      type: object
+      required: [agent_id, phone]
+      properties:
+        agent_id: { type: string }
+        phone: { type: string }
+        name: { type: string }
+    InboundAgentInput:
+      type: object
+      required: [agent_id]
+      properties:
+        agent_id: { type: string }
+    MutationResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+        error: { type: ["string", "null"] }
+
+    DashboardSummary:
+      type: object
+      required: [total_leads, calls_today, active_calls, conversion_rate]
+      properties:
+        total_leads: { type: integer }
+        calls_today: { type: integer }
+        active_calls: { type: integer }
+        conversion_rate: { type: number }
+    FunnelStage:
+      type: object
+      required: [stage, count]
+      properties:
+        stage: { $ref: "#/components/schemas/LeadStage" }
+        count: { type: integer }
+
+    ImportHistoryEntry:
+      type: object
+      required: [id, imported, skipped, created_at]
+      properties:
+        id: { type: string }
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors: { type: integer }
+        created_at: { type: string, format: date-time }
+    WebhookLog:
+      type: object
+      required: [id, source, status, created_at]
+      properties:
+        id: { type: string }
+        source: { type: string }
+        status: { type: string }
+        message: { type: ["string", "null"] }
+        created_at: { type: string, format: date-time }
+
+    TeamMember:
+      type: object
+      required: [id, org_id, name, email, role, created_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        created_at: { type: string, format: date-time }
+    TeamMemberInput:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string, minLength: 1 }
+        email: { type: string }
+        role: { type: string }
