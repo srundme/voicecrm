@@ -12,3 +12,9 @@ id = "7yI-mdtmtvbFPXiIokQ4I"
 uri = "file://Railway_Migration_Guide.md"
 type = "text"
 title = "Railway Migration Guide"
+
+[[outputs]]
+id = "YGOQY3H0bUakw9RNTbBv9"
+uri = "file://VoiceCRM_Complete_Build_and_Deploy.md"
+type = "text"
+title = "VoiceCRM — Complete Build & Deploy Guide"
