@@ -8,7 +8,7 @@ COPY . .
 
 RUN pnpm install --no-frozen-lockfile
 
-RUN BASE_PATH=/ pnpm --filter @workspace/web run build
+RUN PORT=3000 BASE_PATH=/ pnpm --filter @workspace/web run build
 
 RUN pnpm --filter @workspace/api-server run build
 
