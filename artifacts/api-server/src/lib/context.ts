@@ -24,6 +24,7 @@ export type CallContext = {
   insurance_type: string;
   context: string;
   opening_line: string;
+  callback_opening?: string;
   previous_execution_id: string;
   previous_summary?: string;
   callback_reason?: string;
@@ -142,12 +143,19 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
 
   // A callback was explicitly requested and is now due.
   if (pendingCallback) {
+    const callbackOpening = `${firstName(name)} ji, aapne humse baad mein call karne ko kaha tha. Main wapas aa gaya hoon, kya abhi baat kar sakte hain?`;
+    // Build callback_reason: include previous summary so agent has full context.
+    // The prompt skips {{ context }} for callbacks, so the summary MUST go here.
+    const reasonParts: string[] = [];
+    if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
+    if (lastSummary) reasonParts.push(`Previous call summary: ${lastSummary}`);
     return {
       ...base,
       call_type: "callback",
-      context: lastSummary,
-      opening_line: `${firstName(name)} ji, aapne humse baad mein call karne ko kaha tha. Main wapas aa gaya hoon, kya abhi baat kar sakte hain?`,
-      callback_reason: pendingCallback.notes ?? "",
+      context: "",           // intentionally blank — prompt ignores context for callbacks
+      opening_line: callbackOpening,
+      callback_opening: callbackOpening,
+      callback_reason: reasonParts.join("\n\n"),
       previous_execution_id: lastExecId,
     };
   }
