@@ -312,6 +312,50 @@ export async function triggerCall(opts: {
   };
 }
 
+/**
+ * Detects whether a call ended naturally (customer said goodbye / refused / agreed)
+ * vs dropped abruptly (network issue, line cut, Bolna silence-timeout).
+ *
+ * Returns TRUE  → proper ending → no retry needed
+ * Returns FALSE → abrupt ending → flag as drop, trigger retry
+ *
+ * If transcript AND summary are both empty we cannot tell, so we return true
+ * (safe default — avoids spamming a customer when Bolna failed to transcribe).
+ */
+export function isProperCallEnding(
+  transcript: string | null | undefined,
+  summary: string | null | undefined,
+): boolean {
+  const text = `${transcript ?? ""} ${summary ?? ""}`.toLowerCase();
+  if (text.trim().length < 10) return true;
+
+  const properEndingSignals = [
+    // Hindi / Hinglish goodbyes
+    "dhanyawad", "shukriya", "khuda hafiz", "ram ram", "alvida",
+    "bye", "goodbye", "good bye", "theek hai bye", "acha bye", "ok bye",
+    // Refusals — still a valid conversation end, should NOT be retried
+    "not interested", "mujhe nahi chahiye", "nahi chahiye", "nahi lena",
+    "mujhe nahi lena", "abhi nahi", "interest nahi",
+    "galat number", "wrong number", "spam",
+    "do not call", "mat karo call", "dobara mat call",
+    // Customer acknowledges and will follow up themselves
+    "sochta hoon", "sochungi", "sochenge",
+    "baad mein batata", "baad mein bataunga", "baad mein bataungi",
+    "main soochta", "main sochungi",
+    // Callback requested (handled separately by maybeScheduleCallback, not a drop)
+    "callback", "call back", "wapas call", "baad mein call",
+    // Standard English endings
+    "thank you", "thanks", "have a good", "have a nice", "take care",
+    // AI-generated summary signals that indicate a complete conversation
+    "call ended", "conversation ended", "no further interest",
+    "customer requested", "will follow up", "scheduled callback",
+    "policy details shared", "information provided", "lead qualified",
+    "interested in", "agreed to", "not interested in",
+  ];
+
+  return properEndingSignals.some((signal) => text.includes(signal));
+}
+
 export function startPolling(callLogId: string, executionId: string): void {
   if (activePolls.has(callLogId)) return;
   activePolls.add(callLogId);
@@ -331,12 +375,13 @@ export function startPolling(callLogId: string, executionId: string): void {
 
     const exec = result.data;
     const status = mapBolnaStatusToCallStatus(exec.status);
+    // Drop = hard failure OR completed but conversation ended abruptly (no goodbye/refusal)
     const dropDetected =
       exec.ended &&
       (status === "FAILED" ||
         status === "NO_ANSWER" ||
         status === "BUSY" ||
-        (status === "COMPLETED" && (exec.duration_seconds ?? 0) < 10));
+        (status === "COMPLETED" && !isProperCallEnding(exec.transcript, exec.summary)));
 
     const [updated] = await db
       .update(callLogsTable)
