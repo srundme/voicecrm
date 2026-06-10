@@ -112,7 +112,7 @@ export default function FollowUps() {
   const handleReschedule = () => {
     if (!reschedule?.at) return;
     updateFollowUp.mutate(
-      { id: reschedule.id, data: { scheduled_at: new Date(reschedule.at), status: FollowUpStatus.PENDING } },
+      { id: reschedule.id, data: { scheduled_at: new Date(reschedule.at).toISOString(), status: FollowUpStatus.PENDING } },
       {
         onSuccess: () => { invalidate(); setReschedule(null); toast({ title: "Follow-up rescheduled" }); },
         onError: (err: any) => toast({ variant: "destructive", title: "Failed to reschedule", description: err.message }),
