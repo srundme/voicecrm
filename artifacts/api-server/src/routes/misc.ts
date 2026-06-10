@@ -279,17 +279,64 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     res.json({ received: true });
     return;
   }
-  const [row] = await db
+
+  let [row] = await db
     .select()
     .from(callLogsTable)
     .where(eq(callLogsTable.bolna_execution_id, executionId));
+
+  // Call was made directly from Bolna (not via VoiceCRM) — create the log now.
   if (!row) {
-    res.json({ received: true });
-    return;
+    const rawPhone = String(
+      body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ?? "",
+    );
+    const phone = normalizePhone(rawPhone);
+    const agentId = String(body["agent_id"] ?? body["bolna_agent_id"] ?? "");
+    const rawDir = String(body["direction"] ?? "outbound").toUpperCase();
+    const direction = rawDir === "INBOUND" ? "INBOUND" : "OUTBOUND";
+    const rawStatus = String(body["status"] ?? "completed");
+
+    if (!agentId) {
+      logger.warn({ executionId }, "Bolna webhook: unknown call, no agent_id — skipping");
+      res.json({ received: true });
+      return;
+    }
+
+    // Try to match a lead by phone.
+    const [lead] = phone.length === 10
+      ? await db.select({ id: leadsTable.id }).from(leadsTable)
+          .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)))
+          .limit(1)
+      : [];
+
+    const [created] = await db.insert(callLogsTable).values({
+      org_id: DEFAULT_ORG_ID,
+      lead_id: lead?.id ?? null,
+      bolna_execution_id: executionId,
+      bolna_agent_id: agentId,
+      direction,
+      phone_number: phone || rawPhone,
+      status: mapBolnaStatusToCallStatus(rawStatus),
+      call_type: direction === "INBOUND" ? "inbound_new" : "manual_bolna",
+    }).returning();
+
+    if (created) {
+      logger.info({ executionId, leadId: lead?.id ?? null }, "Bolna webhook: created call log for external call");
+      row = created;
+    } else {
+      res.json({ received: true });
+      return;
+    }
   }
+
   const exec = await bolna.getExecution(executionId);
   if (exec.success) {
     const status = mapBolnaStatusToCallStatus(exec.data.status);
+    const dropDetected =
+      !exec.data.ended ? false :
+      (exec.data.duration_seconds != null && exec.data.duration_seconds < 10) ||
+      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status);
+
     const [updated] = await db
       .update(callLogsTable)
       .set({
@@ -299,6 +346,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
         recording_url: exec.data.recording_url,
         duration_seconds: exec.data.duration_seconds,
         ended_at: exec.data.ended ? new Date() : row.ended_at,
+        drop_detected: dropDetected,
       })
       .where(eq(callLogsTable.id, row.id))
       .returning();
