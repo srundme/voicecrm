@@ -1,21 +1,40 @@
-import { useGetApiConfig, useUpdateApiConfig, getGetApiConfigQueryKey } from "@workspace/api-client-react";
+import { useGetApiConfig, useUpdateApiConfig, useTestConnection, getGetApiConfigQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
-import { Save, CheckCircle2, Shield, Webhook, Link as LinkIcon } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+
+type Service = "bolna" | "brevo" | "meta";
+
+function CopyButton({ value }: { value?: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+  return (
+    <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8" onClick={() => {
+      navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }} title="Copy">
+      {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+    </Button>
+  );
+}
 
 export default function Settings() {
   const { data: config, isLoading } = useGetApiConfig();
   const updateConfig = useUpdateApiConfig();
+  const testConnection = useTestConnection();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [reveal, setReveal] = useState<Record<string, boolean>>({});
+  const [testing, setTesting] = useState<Service | null>(null);
   const [formData, setFormData] = useState({
     bolna_api_key: "",
     brevo_api_key: "",
@@ -42,20 +61,26 @@ export default function Settings() {
       {
         onSuccess: (data) => {
           queryClient.setQueryData(getGetApiConfigQueryKey(), data);
-          toast({
-            title: "Settings Saved",
-            description: "API configuration updated successfully.",
-          });
+          toast({ title: "Settings Saved", description: "API configuration updated successfully." });
         },
-        onError: (err: any) => {
-          toast({
-            variant: "destructive",
-            title: "Failed to save settings",
-            description: err.message || "An error occurred",
-          });
-        }
+        onError: (err: any) => toast({ variant: "destructive", title: "Failed to save settings", description: err.message || "An error occurred" }),
       }
     );
+  };
+
+  const handleTest = (service: Service) => {
+    setTesting(service);
+    testConnection.mutate({ service }, {
+      onSuccess: (res: any) => {
+        toast({
+          variant: res?.success ? "default" : "destructive",
+          title: res?.success ? `${service} connected` : `${service} connection failed`,
+          description: res?.message || res?.error,
+        });
+      },
+      onError: (err: any) => toast({ variant: "destructive", title: "Test failed", description: err.message }),
+      onSettled: () => setTesting(null),
+    });
   };
 
   if (isLoading) {
@@ -66,6 +91,41 @@ export default function Settings() {
       </div>
     );
   }
+
+  const keyField = (id: Service, label: string, placeholder: string, field: keyof typeof formData) => (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Input
+            id={id}
+            type={reveal[id] ? "text" : "password"}
+            placeholder={placeholder}
+            value={formData[field] as string}
+            onChange={(e) => setFormData(f => ({ ...f, [field]: e.target.value }))}
+            className="pr-9"
+          />
+          <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full w-9" onClick={() => setReveal(r => ({ ...r, [id]: !r[id] }))} title={reveal[id] ? "Hide" : "Show"}>
+            {reveal[id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </Button>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => handleTest(id)} disabled={testing === id || !(formData[field] as string)}>
+          {testing === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+          <span className="ml-1.5">Test</span>
+        </Button>
+      </div>
+    </div>
+  );
+
+  const urlField = (label: string, value?: string | null) => (
+    <div className="p-3 bg-muted rounded-md border space-y-1">
+      <div className="text-muted-foreground text-xs uppercase tracking-wider font-semibold mb-1">{label}</div>
+      <div className="flex items-center gap-2">
+        <div className="text-sm break-all font-mono flex-1">{value || "-"}</div>
+        <CopyButton value={value} />
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto pb-20">
@@ -81,50 +141,56 @@ export default function Settings() {
               <Shield className="w-5 h-5 text-primary" />
               <CardTitle>API Keys & Credentials</CardTitle>
             </div>
-            <CardDescription>
-              Connect external services. Keys are securely encrypted at rest.
-            </CardDescription>
+            <CardDescription>Connect external services. Keys are masked by default; use Test to verify each connection.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="bolna">Bolna API Key (Voice AI)</Label>
-              <Input
-                id="bolna"
-                type="password"
-                placeholder="sk_..."
-                value={formData.bolna_api_key}
-                onChange={(e) => setFormData(f => ({ ...f, bolna_api_key: e.target.value }))}
+            {keyField("bolna", "Bolna API Key (Voice AI)", "sk_...", "bolna_api_key")}
+            {keyField("brevo", "Brevo API Key (Email/SMS)", "xkeysib-...", "brevo_api_key")}
+            {keyField("meta", "Meta Ads Access Token", "EAAG...", "meta_ads_access_token")}
+            {config?.updated_at && <div className="text-xs text-muted-foreground">Last updated: {new Date(config.updated_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>}
+          </CardContent>
+          <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
+            <Button onClick={handleSave} disabled={updateConfig.isPending}>
+              {updateConfig.isPending ? "Saving..." : (<><Save className="w-4 h-4 mr-2" />Save Keys</>)}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              <CardTitle>SMS Notifications</CardTitle>
+            </div>
+            <CardDescription>Automatic SMS alerts sent via Brevo for key lead and call events.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="sms_on_lead_created">SMS on new lead</Label>
+                <p className="text-sm text-muted-foreground">Send a welcome SMS when a lead is created.</p>
+              </div>
+              <Switch
+                id="sms_on_lead_created"
+                checked={formData.sms_on_lead_created}
+                onCheckedChange={(v) => setFormData(f => ({ ...f, sms_on_lead_created: v }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="brevo">Brevo API Key (Email/SMS)</Label>
-              <Input
-                id="brevo"
-                type="password"
-                placeholder="xkeysib-..."
-                value={formData.brevo_api_key}
-                onChange={(e) => setFormData(f => ({ ...f, brevo_api_key: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="meta">Meta Ads Access Token</Label>
-              <Input
-                id="meta"
-                type="password"
-                placeholder="EAAG..."
-                value={formData.meta_ads_access_token}
-                onChange={(e) => setFormData(f => ({ ...f, meta_ads_access_token: e.target.value }))}
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="sms_on_call_scheduled">SMS on scheduled call</Label>
+                <p className="text-sm text-muted-foreground">Notify the lead when a call is scheduled with them.</p>
+              </div>
+              <Switch
+                id="sms_on_call_scheduled"
+                checked={formData.sms_on_call_scheduled}
+                onCheckedChange={(v) => setFormData(f => ({ ...f, sms_on_call_scheduled: v }))}
               />
             </div>
           </CardContent>
           <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
             <Button onClick={handleSave} disabled={updateConfig.isPending}>
-              {updateConfig.isPending ? "Saving..." : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Keys
-                </>
-              )}
+              {updateConfig.isPending ? "Saving..." : (<><Save className="w-4 h-4 mr-2" />Save Preferences</>)}
             </Button>
           </CardFooter>
         </Card>
@@ -136,23 +202,13 @@ export default function Settings() {
                 <Webhook className="w-5 h-5 text-primary" />
                 <CardTitle>System Webhooks & APIs</CardTitle>
               </div>
-              <CardDescription>
-                Use these endpoints to send leads into VoiceCRM from external systems.
-              </CardDescription>
+              <CardDescription>Use these endpoints to send leads into VoiceCRM and to configure Bolna inbound settings.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-3 bg-muted rounded-md border text-sm break-all font-mono space-y-1">
-                <div className="text-muted-foreground text-xs uppercase tracking-wider font-sans font-semibold mb-2">Meta Ads Webhook URL</div>
-                {config.meta_webhook_url}
-              </div>
-              <div className="p-3 bg-muted rounded-md border text-sm break-all font-mono space-y-1">
-                <div className="text-muted-foreground text-xs uppercase tracking-wider font-sans font-semibold mb-2">Context API URL (For Bolna Agents)</div>
-                {config.context_api_url}
-              </div>
-              <div className="p-3 bg-muted rounded-md border text-sm break-all font-mono space-y-1">
-                <div className="text-muted-foreground text-xs uppercase tracking-wider font-sans font-semibold mb-2">Context API Bearer Token</div>
-                {config.context_api_bearer_token}
-              </div>
+              {urlField("Context API URL (for Bolna Agents)", config.context_api_url)}
+              {urlField("Context API Bearer Token", config.context_api_bearer_token)}
+              {urlField("Meta Ads Webhook URL", config.meta_webhook_url)}
+              {urlField("Website Form Webhook URL", config.website_form_webhook_url)}
             </CardContent>
           </Card>
         )}

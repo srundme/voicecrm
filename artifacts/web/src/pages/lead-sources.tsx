@@ -368,7 +368,7 @@ export default function LeadSources() {
                   {webhooks.map((w) => (
                     <TableRow key={w.id}>
                       <TableCell className="font-medium capitalize">{w.source.replace(/_/g, ' ').toLowerCase()}</TableCell>
-                      <TableCell><Badge variant={w.status === "success" ? "default" : "destructive"}>{w.status}</Badge></TableCell>
+                      <TableCell><Badge variant={w.status === "SUCCESS" || w.status === "SKIPPED" ? "default" : "destructive"}>{w.status}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatRelativeTime(w.created_at)}</TableCell>
                     </TableRow>
                   ))}

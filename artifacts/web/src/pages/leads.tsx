@@ -14,6 +14,11 @@ import { Search, Plus, Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const AADHAAR_RE = /^\d{12}$/;
+const PINCODE_RE = /^[1-9]\d{5}$/;
+const PHONE_RE = /^[6-9]\d{9}$/;
+
 function NewLeadDialog() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<LeadInput>({ full_name: "", phone: "" });
@@ -23,13 +28,22 @@ function NewLeadDialog() {
 
   const update = (patch: Partial<LeadInput>) => setForm((f) => ({ ...f, ...patch }));
 
+  const phoneError = form.phone.length > 0 && !PHONE_RE.test(form.phone) ? "Enter a valid 10-digit mobile (starts 6-9)" : "";
+  const panError = form.pan_number && !PAN_RE.test(form.pan_number) ? "Invalid PAN (e.g. ABCDE1234F)" : "";
+  const aadhaarError = form.aadhaar_number && !AADHAAR_RE.test(form.aadhaar_number) ? "Aadhaar must be 12 digits" : "";
+  const pincodeError = form.pincode && !PINCODE_RE.test(form.pincode) ? "Pincode must be 6 digits" : "";
+
   const submit = () => {
     if (!form.full_name.trim()) {
       toast({ title: "Name required", variant: "destructive" });
       return;
     }
-    if (!/^[6-9]\d{9}$/.test(form.phone)) {
+    if (!PHONE_RE.test(form.phone)) {
       toast({ title: "Enter a valid 10-digit mobile number", variant: "destructive" });
+      return;
+    }
+    if (panError || aadhaarError || pincodeError) {
+      toast({ title: "Fix the highlighted fields", variant: "destructive" });
       return;
     }
     createLead.mutate(
@@ -64,7 +78,8 @@ function NewLeadDialog() {
           </div>
           <div className="space-y-1.5">
             <Label>Phone (10 digits)</Label>
-            <Input value={form.phone} onChange={(e) => update({ phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} placeholder="9876543210" />
+            <Input value={form.phone} onChange={(e) => update({ phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} placeholder="9876543210" className={phoneError ? "border-destructive" : ""} />
+            {phoneError && <p className="text-xs text-destructive">{phoneError}</p>}
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>
@@ -73,6 +88,21 @@ function NewLeadDialog() {
           <div className="space-y-1.5">
             <Label>City</Label>
             <Input value={form.city ?? ""} onChange={(e) => update({ city: e.target.value || undefined })} placeholder="optional" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Pincode</Label>
+            <Input value={form.pincode ?? ""} onChange={(e) => update({ pincode: e.target.value.replace(/\D/g, "").slice(0, 6) || undefined })} placeholder="560001" className={pincodeError ? "border-destructive" : ""} />
+            {pincodeError && <p className="text-xs text-destructive">{pincodeError}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>PAN</Label>
+            <Input value={form.pan_number ?? ""} onChange={(e) => update({ pan_number: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || undefined })} placeholder="ABCDE1234F" className={panError ? "border-destructive" : ""} />
+            {panError && <p className="text-xs text-destructive">{panError}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Aadhaar</Label>
+            <Input value={form.aadhaar_number ?? ""} onChange={(e) => update({ aadhaar_number: e.target.value.replace(/\D/g, "").slice(0, 12) || undefined })} placeholder="123412341234" className={aadhaarError ? "border-destructive" : ""} />
+            {aadhaarError && <p className="text-xs text-destructive">{aadhaarError}</p>}
           </div>
           <div className="space-y-1.5">
             <Label>Gender</Label>

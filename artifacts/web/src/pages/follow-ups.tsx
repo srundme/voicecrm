@@ -9,9 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { formatDateTime } from "@/lib/format";
-import { Plus, Loader2, Trash2, PhoneCall, CheckCircle2 } from "lucide-react";
+import { Plus, Loader2, Trash2, PhoneCall, CheckCircle2, CalendarDays, List as ListIcon, ChevronLeft, ChevronRight, CalendarClock } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -22,9 +22,33 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   RESCHEDULED: "secondary",
 };
 
+const TYPE_COLOR: Record<string, string> = {
+  RENEWAL_REMINDER: "bg-amber-100 text-amber-800 border-amber-200",
+  MONTHLY_CHECKIN: "bg-purple-100 text-purple-800 border-purple-200",
+  CALLBACK_REQUESTED: "bg-blue-100 text-blue-800 border-blue-200",
+  MANUAL: "bg-gray-100 text-gray-700 border-gray-200",
+  POLICY_ANNIVERSARY: "bg-emerald-100 text-emerald-800 border-emerald-200",
+};
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function pad(n: number) { return String(n).padStart(2, "0"); }
+function istDateKey(iso?: string | null): string {
+  if (!iso) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(iso));
+}
+function todayIstKey(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+function TypeBadge({ type }: { type: string }) {
+  return <Badge variant="outline" className={`capitalize ${TYPE_COLOR[type] || ""}`}>{type.replace(/_/g, " ").toLowerCase()}</Badge>;
+}
+
 export default function FollowUps() {
+  const [view, setView] = useState<"list" | "calendar">("list");
   const [status, setStatus] = useState<FollowUpStatus | "ALL">("ALL");
-  const { data, isLoading } = useListFollowUps(status !== "ALL" ? { status: status as FollowUpStatus } : undefined);
+  const { data, isLoading } = useListFollowUps();
   const createFollowUp = useCreateFollowUp();
   const updateFollowUp = useUpdateFollowUp();
   const deleteFollowUp = useDeleteFollowUp();
@@ -32,6 +56,9 @@ export default function FollowUps() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const now = new Date();
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());
   const [form, setForm] = useState({
     lead_id: "",
     type: FollowUpType.MANUAL as FollowUpType,
@@ -39,6 +66,25 @@ export default function FollowUps() {
     bolna_agent_id: "",
     notes: "",
   });
+
+  const all = data ?? [];
+  const todayKey = todayIstKey();
+  const todayItems = useMemo(
+    () => all.filter((f) => istDateKey(f.scheduled_at) === todayKey && f.status !== "COMPLETED" && f.status !== "SKIPPED"),
+    [all, todayKey],
+  );
+  const listItems = useMemo(
+    () => (status === "ALL" ? all : all.filter((f) => f.status === status)),
+    [all, status],
+  );
+  const countsByDay = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const f of all) {
+      const k = istDateKey(f.scheduled_at);
+      if (k) m[k] = (m[k] || 0) + 1;
+    }
+    return m;
+  }, [all]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListFollowUpsQueryKey() });
 
@@ -84,6 +130,12 @@ export default function FollowUps() {
     });
   };
 
+  const firstWeekday = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const monthLabel = new Date(calYear, calMonth, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const prevMonth = () => { const d = new Date(calYear, calMonth - 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); };
+  const nextMonth = () => { const d = new Date(calYear, calMonth + 1, 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()); };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto flex flex-col h-[calc(100vh-2rem)]">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -91,69 +143,145 @@ export default function FollowUps() {
           <h1 className="text-3xl font-bold tracking-tight">Follow-ups</h1>
           <p className="text-muted-foreground mt-1">Scheduled renewals, check-ins, and callbacks.</p>
         </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Follow-up
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-md border p-0.5">
+            <Button variant={view === "list" ? "default" : "ghost"} size="sm" onClick={() => setView("list")}>
+              <ListIcon className="w-4 h-4 mr-1.5" /> List
+            </Button>
+            <Button variant={view === "calendar" ? "default" : "ghost"} size="sm" onClick={() => setView("calendar")}>
+              <CalendarDays className="w-4 h-4 mr-1.5" /> Calendar
+            </Button>
+          </div>
+          <Button onClick={() => setOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Follow-up
+          </Button>
+        </div>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <div className="p-4 border-b flex flex-wrap gap-4 items-center">
-          <Select value={status} onValueChange={(v: any) => setStatus(v)}>
-            <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Statuses</SelectItem>
-              {Object.keys(FollowUpStatus).map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 overflow-auto">
-          <Table>
-            <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
-              <TableRow>
-                <TableHead>Lead</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Scheduled</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-              ) : !data || data.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No follow-ups scheduled.</TableCell></TableRow>
-              ) : (
-                data.map((f) => (
-                  <TableRow key={f.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{f.lead_name || "-"}</TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize">{f.type.replace(/_/g, ' ').toLowerCase()}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{formatDateTime(f.scheduled_at)}</TableCell>
-                    <TableCell><Badge variant={STATUS_VARIANT[f.status] || "secondary"}>{f.status.replace(/_/g, ' ')}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{f.notes || "-"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleCall(f.id)} disabled={triggerCall.isPending} title="Trigger call now">
-                          <PhoneCall className="w-4 h-4 text-primary" />
-                        </Button>
-                        {f.status !== "COMPLETED" && (
-                          <Button variant="ghost" size="icon" onClick={() => handleComplete(f.id)} title="Mark complete">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(f.id)} title="Delete">
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+      <Card className="border-primary/40 bg-primary/5">
+        <div className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarClock className="w-5 h-5 text-primary" />
+            <h2 className="font-semibold">Today ({todayItems.length})</h2>
+          </div>
+          {isLoading ? (
+            <div className="text-sm text-muted-foreground">Loading...</div>
+          ) : todayItems.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nothing scheduled for today.</div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {todayItems.map((f) => (
+                <div key={f.id} className="flex items-center justify-between gap-3 rounded-md border bg-card p-3">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate flex items-center gap-2">
+                      {f.lead_name || "-"}
+                      {f.type === "MONTHLY_CHECKIN" && <CalendarClock className="w-3.5 h-3.5 text-purple-600" />}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <TypeBadge type={f.type} />
+                      <span className="text-xs text-muted-foreground">{formatDateTime(f.scheduled_at, "hh:mm a")}</span>
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={() => handleCall(f.id)} disabled={triggerCall.isPending}>
+                    <PhoneCall className="w-4 h-4 mr-1.5" /> Call Now
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
+
+      {view === "calendar" ? (
+        <Card className="flex-1 flex flex-col overflow-hidden">
+          <div className="p-4 border-b flex items-center justify-between">
+            <Button variant="outline" size="icon" onClick={prevMonth}><ChevronLeft className="w-4 h-4" /></Button>
+            <div className="font-semibold">{monthLabel}</div>
+            <Button variant="outline" size="icon" onClick={nextMonth}><ChevronRight className="w-4 h-4" /></Button>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <div className="grid grid-cols-7 gap-1">
+              {WEEKDAYS.map((d) => <div key={d} className="text-center text-xs font-medium text-muted-foreground py-2">{d}</div>)}
+              {Array.from({ length: firstWeekday }).map((_, i) => <div key={`b${i}`} />)}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const key = `${calYear}-${pad(calMonth + 1)}-${pad(day)}`;
+                const count = countsByDay[key] || 0;
+                const isToday = key === todayKey;
+                return (
+                  <div key={key} className={`min-h-[72px] rounded-md border p-2 ${isToday ? "border-primary bg-primary/5" : "bg-card"}`}>
+                    <div className={`text-sm ${isToday ? "font-bold text-primary" : "text-muted-foreground"}`}>{day}</div>
+                    {count > 0 && (
+                      <div className="mt-1">
+                        <Badge variant="secondary" className="text-xs">{count} follow-up{count > 1 ? "s" : ""}</Badge>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card className="flex-1 flex flex-col overflow-hidden">
+          <div className="p-4 border-b flex flex-wrap gap-4 items-center">
+            <Select value={status} onValueChange={(v: any) => setStatus(v)}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Statuses</SelectItem>
+                {Object.keys(FollowUpStatus).map(s => <SelectItem key={s} value={s}>{s.replace(/_/g, ' ')}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
+                <TableRow>
+                  <TableHead>Lead</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Scheduled</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Notes</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                ) : listItems.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No follow-ups scheduled.</TableCell></TableRow>
+                ) : (
+                  listItems.map((f) => (
+                    <TableRow key={f.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{f.lead_name || "-"}</TableCell>
+                      <TableCell><TypeBadge type={f.type} /></TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDateTime(f.scheduled_at)}</TableCell>
+                      <TableCell><Badge variant={STATUS_VARIANT[f.status] || "secondary"}>{f.status.replace(/_/g, ' ')}</Badge></TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{f.notes || "-"}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleCall(f.id)} disabled={triggerCall.isPending} title="Trigger call now">
+                            <PhoneCall className="w-4 h-4 text-primary" />
+                          </Button>
+                          {f.status !== "COMPLETED" && (
+                            <Button variant="ghost" size="icon" onClick={() => handleComplete(f.id)} title="Mark complete">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(f.id)} title="Delete">
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
