@@ -39,6 +39,7 @@ import { DEFAULT_ORG_ID } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
 import { triggerCall } from "../lib/call-engine";
 import { serializeCallLogs } from "../lib/serialize";
+import { notifyLeadCreated } from "../lib/brevo";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -167,6 +168,7 @@ router.post("/leads", async (req, res): Promise<void> => {
     .returning();
 
   void autoCallOnLead(row!.id, row!.phone);
+  void notifyLeadCreated(row!.phone, row!.full_name);
   res.status(201).json(row);
 });
 
@@ -402,20 +404,35 @@ router.post("/leads/bulk-import", async (req, res): Promise<void> => {
       continue;
     }
     seen.add(phone);
-    const gender = (raw.gender ?? "").toUpperCase();
-    const insuranceType = (raw.insurance_type ?? "").toUpperCase();
+    const genderRaw = (raw.gender ?? "").toUpperCase();
+    const gender = (["MALE", "FEMALE", "OTHER"] as const).find(
+      (g) => g === genderRaw,
+    );
+    const insuranceTypeRaw = (raw.insurance_type ?? "").toUpperCase();
+    const insuranceType = (
+      [
+        "LIFE",
+        "HEALTH",
+        "MOTOR",
+        "TERM",
+        "ULIP",
+        "ENDOWMENT",
+        "ACCIDENT",
+        "TRAVEL",
+      ] as const
+    ).find((t) => t === insuranceTypeRaw);
     const [lead] = await db
       .insert(leadsTable)
       .values({
         org_id: DEFAULT_ORG_ID,
         full_name: name,
         phone,
-        gender: ["MALE", "FEMALE", "OTHER"].includes(gender) ? gender : "OTHER",
+        gender: gender ?? "OTHER",
         email: raw.email || null,
         city: raw.city || null,
         state: raw.state || null,
         pincode: raw.pincode || null,
-        insurance_type: insuranceType || null,
+        insurance_type: insuranceType ?? null,
         notes: raw.notes || null,
         source: "CSV_UPLOAD",
       })

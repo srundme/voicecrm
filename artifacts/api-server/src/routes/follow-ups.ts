@@ -13,6 +13,18 @@ import {
 import { DEFAULT_ORG_ID } from "../lib/org";
 import { attachLeadNames } from "../lib/serialize";
 import { triggerCall } from "../lib/call-engine";
+import { notifyCallScheduled } from "../lib/brevo";
+
+function formatIst(date: Date): string {
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 const router: IRouter = Router();
 
@@ -46,6 +58,13 @@ router.post("/follow-ups", async (req, res): Promise<void> => {
     .insert(followUpsTable)
     .values({ ...parsed.data, org_id: DEFAULT_ORG_ID })
     .returning();
+  const [lead] = await db
+    .select({ phone: leadsTable.phone })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, row!.lead_id));
+  if (lead) {
+    void notifyCallScheduled(lead.phone, formatIst(row!.scheduled_at));
+  }
   const [withName] = await attachLeadNames([row!]);
   res.status(201).json(withName);
 });

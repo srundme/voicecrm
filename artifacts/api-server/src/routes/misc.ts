@@ -131,6 +131,18 @@ async function ingestLead(opts: {
     return { ok: false, message: "Duplicate lead" };
   }
   const insType = (opts.insuranceType ?? "").toUpperCase();
+  const validInsType = (
+    [
+      "LIFE",
+      "HEALTH",
+      "MOTOR",
+      "TERM",
+      "ULIP",
+      "ENDOWMENT",
+      "ACCIDENT",
+      "TRAVEL",
+    ] as const
+  ).find((t) => t === insType);
   const [lead] = await db
     .insert(leadsTable)
     .values({
@@ -139,18 +151,7 @@ async function ingestLead(opts: {
       phone,
       email: opts.email,
       city: opts.city,
-      insurance_type: [
-        "LIFE",
-        "HEALTH",
-        "MOTOR",
-        "TERM",
-        "ULIP",
-        "ENDOWMENT",
-        "ACCIDENT",
-        "TRAVEL",
-      ].includes(insType)
-        ? insType
-        : null,
+      insurance_type: validInsType ?? null,
       source: opts.source,
       source_campaign_id: opts.campaignId ?? null,
       source_form_id: opts.formId ?? null,

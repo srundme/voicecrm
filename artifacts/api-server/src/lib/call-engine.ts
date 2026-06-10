@@ -74,6 +74,7 @@ export async function triggerCall(opts: {
       phone_number: phone,
       status: "INITIATED",
       call_type: opts.retryOfCallId ? "drop_retry" : context.call_type,
+      memory_injected: variables,
       retry_of_call_id: opts.retryOfCallId ?? null,
     })
     .returning();

@@ -228,7 +228,17 @@ export const bolna = {
   },
 };
 
-export function mapBolnaStatusToCallStatus(status: string): string {
+export type CallStatus =
+  | "INITIATED"
+  | "RINGING"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "FAILED"
+  | "NO_ANSWER"
+  | "BUSY"
+  | "CANCELLED";
+
+export function mapBolnaStatusToCallStatus(status: string): CallStatus {
   const s = status.toLowerCase();
   if (["completed", "stopped"].includes(s)) return "COMPLETED";
   if (["error", "failed"].includes(s)) return "FAILED";

@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
 export const apiConfigTable = pgTable("api_config", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -23,4 +24,6 @@ export const apiConfigTable = pgTable("api_config", {
     .$onUpdate(() => new Date()),
 });
 
+export const insertApiConfigSchema = createInsertSchema(apiConfigTable);
 export type ApiConfigRow = typeof apiConfigTable.$inferSelect;
+export type ApiConfigInsert = typeof apiConfigTable.$inferInsert;

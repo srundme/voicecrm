@@ -6,12 +6,14 @@ import {
   timestamp,
   jsonb,
 } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { automationTypeEnum } from "./enums";
 
 export const automationsTable = pgTable("automations", {
   id: uuid("id").primaryKey().defaultRandom(),
   org_id: text("org_id").notNull(),
   name: text("name").notNull(),
-  type: text("type").notNull(),
+  type: automationTypeEnum("type").notNull(),
   bolna_agent_id: text("bolna_agent_id").notNull(),
   trigger_config: jsonb("trigger_config")
     .$type<Record<string, unknown>>()
@@ -28,4 +30,6 @@ export const automationsTable = pgTable("automations", {
     .$onUpdate(() => new Date()),
 });
 
+export const insertAutomationSchema = createInsertSchema(automationsTable);
 export type AutomationRow = typeof automationsTable.$inferSelect;
+export type AutomationInsert = typeof automationsTable.$inferInsert;

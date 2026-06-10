@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
 export const importHistoryTable = pgTable("import_history", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -22,5 +23,9 @@ export const webhookLogsTable = pgTable("webhook_logs", {
     .defaultNow(),
 });
 
+export const insertImportHistorySchema = createInsertSchema(importHistoryTable);
+export const insertWebhookLogSchema = createInsertSchema(webhookLogsTable);
 export type ImportHistoryRow = typeof importHistoryTable.$inferSelect;
+export type ImportHistoryInsert = typeof importHistoryTable.$inferInsert;
 export type WebhookLogRow = typeof webhookLogsTable.$inferSelect;
+export type WebhookLogInsert = typeof webhookLogsTable.$inferInsert;

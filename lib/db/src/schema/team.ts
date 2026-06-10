@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
 
 export const teamMembersTable = pgTable("team_members", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -11,4 +12,6 @@ export const teamMembersTable = pgTable("team_members", {
     .defaultNow(),
 });
 
+export const insertTeamMemberSchema = createInsertSchema(teamMembersTable);
 export type TeamMemberRow = typeof teamMembersTable.$inferSelect;
+export type TeamMemberInsert = typeof teamMembersTable.$inferInsert;
