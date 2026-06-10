@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { db, callLogsTable, leadsTable, type CallLogRow } from "@workspace/db";
+import { db, callLogsTable, leadsTable, followUpsTable, type CallLogRow } from "@workspace/db";
 import { bolna, mapBolnaStatusToCallStatus } from "./bolna";
 import { normalizePhone } from "./phone";
 import { buildCallContext } from "./context";
@@ -7,6 +7,161 @@ import { DEFAULT_ORG_ID } from "./org";
 import { emitCallUpdate } from "./events";
 import { serializeCallLog } from "./serialize";
 import { logger } from "./logger";
+
+// ── Callback intent parser ────────────────────────────────────────────────────
+
+const HINDI_NUMS: Record<string, number> = {
+  ek: 1, do: 2, teen: 3, char: 4, paanch: 5, chhe: 6, chhah: 6,
+  saat: 7, aath: 8, nau: 9, das: 10, gyarah: 11, barah: 12,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+
+function toNum(s: string): number {
+  return HINDI_NUMS[s.toLowerCase()] ?? Number(s);
+}
+
+const HINDI_NUM_PAT = Object.keys(HINDI_NUMS).join("|");
+const NUM_PAT = `(\\d+|${HINDI_NUM_PAT})`;
+
+/** Returns the IST wall-clock Date for a given hour/minute on a given UTC Date */
+function istDateTime(base: Date, hour: number, minute = 0): Date {
+  const d = new Date(base);
+  d.setUTCHours(hour - 5, minute - 30, 0, 0); // IST = UTC+5:30
+  return d;
+}
+
+/**
+ * Parse a callback time hint out of call transcript + summary text.
+ * Returns { scheduledAt, notes } if a callback was requested, or null otherwise.
+ * All times are anchored to IST.
+ */
+export function parseCallbackIntent(
+  text: string,
+  callEndedAt: Date = new Date(),
+): { scheduledAt: Date; notes: string } | null {
+  if (!text || text.trim().length < 5) return null;
+
+  const lower = text.toLowerCase();
+
+  // Must contain a callback signal
+  const callbackSignals = [
+    "call back", "callback", "call kar", "call karo", "call karen", "call kijiye",
+    "call karna", "wapas call", "phir call", "baad mein call", "baad call",
+    "bad mein call", "call karti hoon", "call karta hoon", "call karenge",
+    "call later", "call again",
+  ];
+  if (!callbackSignals.some((s) => lower.includes(s))) return null;
+
+  // ── Relative: "X minute(s) baad" ─────────────────────────────────────────
+  const minRx = new RegExp(
+    `${NUM_PAT}\\s*(?:minute|minutes|min|mins)\\s*(?:baad|bad|ke baad|after|later)`,
+    "i",
+  );
+  const minMatch = lower.match(minRx);
+  if (minMatch) {
+    const n = toNum(minMatch[1]!);
+    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 1000);
+    return { scheduledAt, notes: `Customer requested callback in ${n} minute(s)` };
+  }
+
+  // ── Relative: "X ghante/hour(s) baad" ────────────────────────────────────
+  const hrRx = new RegExp(
+    `${NUM_PAT}\\s*(?:ghante|ghanta|ghanta|hour|hours|hr|hrs)\\s*(?:baad|bad|ke baad|after|later)`,
+    "i",
+  );
+  const hrMatch = lower.match(hrRx);
+  if (hrMatch) {
+    const n = toNum(hrMatch[1]!);
+    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 60 * 1000);
+    return { scheduledAt, notes: `Customer requested callback in ${n} hour(s)` };
+  }
+
+  // ── Tomorrow / kal ────────────────────────────────────────────────────────
+  const isTomorrow = /\b(kal|tomorrow|agle din|next day)\b/.test(lower);
+  const isDayAfter = /\b(parso|परसों|day after tomorrow)\b/.test(lower);
+  const baseDay = new Date(callEndedAt);
+  if (isDayAfter) baseDay.setDate(baseDay.getDate() + 2);
+  else if (isTomorrow) baseDay.setDate(baseDay.getDate() + 1);
+
+  if (isTomorrow || isDayAfter) {
+    // Specific digit time: "2 baje", "14:00", "2:30 pm"
+    const digitTimeRx = /(\d{1,2})(?::(\d{2}))?\s*(?:baje|bajey|baj|am\b|pm\b)/i;
+    const dtm = lower.match(digitTimeRx);
+    if (dtm) {
+      let h = Number(dtm[1]);
+      const m = dtm[2] ? Number(dtm[2]) : 0;
+      if (/pm/i.test(dtm[0]) && h < 12) h += 12;
+      if (/am/i.test(dtm[0]) && h === 12) h = 0;
+      // If hour looks like afternoon context (≤ 7 and no am/pm), treat as PM
+      if (h <= 7 && !/am/i.test(dtm[0])) h += 12;
+      return { scheduledAt: istDateTime(baseDay, h, m), notes: `Customer requested callback ${isTomorrow ? "tomorrow" : "day after tomorrow"} at ${h}:${String(m).padStart(2, "0")}` };
+    }
+
+    // Hindi time word: "do baje", "teen baje"
+    const hindiTimeRx = new RegExp(
+      `(${HINDI_NUM_PAT})\\s*(?:baje|bajey|baj|ke baad)`,
+      "i",
+    );
+    const htm = lower.match(hindiTimeRx);
+    if (htm) {
+      let h = toNum(htm[1]!);
+      if (h <= 7) h += 12; // Afternoon default for small numbers
+      return { scheduledAt: istDateTime(baseDay, h), notes: `Customer requested callback ${isTomorrow ? "tomorrow" : "day after"} at ${h}:00` };
+    }
+
+    // Time-of-day hints
+    if (/\b(subah|morning|sawere)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 9), notes: "Customer requested callback tomorrow morning" };
+    if (/\b(shaam|evening|sham)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 17), notes: "Customer requested callback tomorrow evening" };
+    if (/\b(dopahar|afternoon|duphar)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 14), notes: "Customer requested callback tomorrow afternoon" };
+    if (/\b(raat|night)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 20), notes: "Customer requested callback tomorrow night" };
+
+    // Just "kal" with no time → 10 AM IST tomorrow
+    return { scheduledAt: istDateTime(baseDay, 10), notes: "Customer requested callback tomorrow (time unspecified, defaulted to 10 AM)" };
+  }
+
+  // ── Generic callback request with no time → 2 hours from now ─────────────
+  return {
+    scheduledAt: new Date(callEndedAt.getTime() + 2 * 60 * 60 * 1000),
+    notes: "Customer requested a callback (time unspecified, defaulted to 2 hours)",
+  };
+}
+
+export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
+  if (!call.lead_id) return;
+  try {
+    const text = [call.transcript ?? "", call.summary ?? ""].join(" ");
+    const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
+    if (!intent) return;
+
+    await db.insert(followUpsTable).values({
+      org_id: call.org_id,
+      lead_id: call.lead_id,
+      type: "CALLBACK_REQUESTED",
+      scheduled_at: intent.scheduledAt,
+      bolna_agent_id: call.bolna_agent_id,
+      call_log_id: call.id,
+      notes: intent.notes,
+      status: "PENDING",
+    });
+
+    await db
+      .update(leadsTable)
+      .set({ next_followup_at: intent.scheduledAt })
+      .where(eq(leadsTable.id, call.lead_id));
+
+    logger.info(
+      { callId: call.id, leadId: call.lead_id, scheduledAt: intent.scheduledAt },
+      "auto-scheduled callback follow-up from call transcript",
+    );
+  } catch (err) {
+    logger.error({ err, callId: call.id }, "maybeScheduleCallback failed");
+  }
+}
 
 const POLL_INTERVAL_MS = 6000;
 const MAX_POLLS = 120;
@@ -143,7 +298,10 @@ export function startPolling(callLogId: string, executionId: string): void {
     if (exec.ended || polls >= MAX_POLLS) {
       activePolls.delete(callLogId);
       if (updated && dropDetected) await maybeRetryOnDrop(updated);
-      if (updated && !dropDetected && updated.status === "COMPLETED") await maybeAdvanceLeadStage(updated);
+      if (updated && !dropDetected && updated.status === "COMPLETED") {
+        await maybeAdvanceLeadStage(updated);
+        await maybeScheduleCallback(updated);
+      }
       return;
     }
     setTimeout(tick, POLL_INTERVAL_MS);

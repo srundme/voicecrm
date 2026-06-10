@@ -10,7 +10,7 @@ import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
-import { triggerCall, startPolling } from "../lib/call-engine";
+import { triggerCall, startPolling, maybeScheduleCallback } from "../lib/call-engine";
 import {
   bolna,
   mapBolnaStatusToCallStatus,
@@ -352,6 +352,9 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
       .returning();
     if (updated && !exec.data.ended) {
       startPolling(updated.id, executionId);
+    }
+    if (updated && exec.data.ended && !dropDetected && status === "COMPLETED") {
+      void maybeScheduleCallback(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
