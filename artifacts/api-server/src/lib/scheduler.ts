@@ -40,6 +40,7 @@ function buildCallbackVars(notes: string | null): Record<string, string> {
 
   return {
     is_callback: "true",
+    call_type: "callback",           // matches {%- elif call_type == "callback" %} in prompt
     callback_time: callbackTime,
     callback_opening: callbackOpening,
   };
