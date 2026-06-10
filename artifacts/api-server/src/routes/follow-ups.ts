@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, lte } from "drizzle-orm";
-import { db, followUpsTable, leadsTable, callLogsTable } from "@workspace/db";
+import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { db, followUpsTable, leadsTable } from "@workspace/db";
 import {
   ListFollowUpsQueryParams,
   ListFollowUpsResponse,
@@ -145,23 +145,13 @@ router.post("/follow-ups/:id/call", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Lead not found" });
     return;
   }
-  // Fetch the most recent completed call for this lead to carry forward summary
-  const [lastCall] = await db
-    .select({ summary: callLogsTable.summary, bolna_execution_id: callLogsTable.bolna_execution_id })
-    .from(callLogsTable)
-    .where(eq(callLogsTable.lead_id, lead.id))
-    .orderBy(desc(callLogsTable.created_at))
-    .limit(1);
-
+  // buildCallContext will detect the pending CALLBACK_REQUESTED follow-up and
+  // build callback_opening + callback_reason (with prior summary) automatically.
+  // We do not override variables here so the context is not accidentally clobbered.
   const outcome = await triggerCall({
     agentId: followUp.bolna_agent_id,
     phone: lead.phone,
     leadId: lead.id,
-    variables: {
-      previous_summary: lastCall?.summary ?? "",
-      previous_execution_id: lastCall?.bolna_execution_id ?? "",
-      callback_reason: followUp.notes ?? "",
-    },
   });
   if (outcome.success && outcome.call_log_id) {
     await db
