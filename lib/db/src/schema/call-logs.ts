@@ -11,6 +11,25 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { callDirEnum, callStatusEnum } from "./enums";
 
+export type ComplianceCheckResult = {
+  id: string;
+  label: string;
+  passed: boolean;
+  score: number;
+  note?: string;
+};
+
+export type ComplianceData = {
+  overall_score: number;
+  status: "PASS" | "WARNING" | "FAIL";
+  irdai_score: number;
+  dpdp_score: number;
+  irdai_checks: ComplianceCheckResult[];
+  dpdp_checks: ComplianceCheckResult[];
+  flags: string[];
+  analyzed_at: string;
+};
+
 export const callLogsTable = pgTable(
   "call_logs",
   {
@@ -34,6 +53,9 @@ export const callLogsTable = pgTable(
     disposition_id: uuid("disposition_id"),
     drop_detected: boolean("drop_detected").notNull().default(false),
     drop_reason: text("drop_reason"),
+    compliance_status: text("compliance_status"),
+    compliance_score: integer("compliance_score"),
+    compliance_data: jsonb("compliance_data").$type<ComplianceData>(),
     retry_of_call_id: uuid("retry_of_call_id"),
     retry_call_id: uuid("retry_call_id"),
     memory_injected: jsonb("memory_injected").$type<Record<string, unknown>>(),
