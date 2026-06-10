@@ -1,0 +1,1139 @@
+# VoiceCRM — Complete Replit Master Build Prompt
+> Paste this entire file into Replit Agent. Build in the order specified.
+
+---
+
+## OVERVIEW
+
+You are building a full-stack SaaS client portal called **VoiceCRM** — a Bolna AI voice call
+orchestration platform with a built-in Insurance CRM, designed for Indian insurance companies.
+This is a client-facing portal only (not the Bolna dashboard). All AI call intelligence happens
+through Bolna's APIs; this app orchestrates, stores, and visualises everything around those calls.
+
+---
+
+## TECH STACK
+
+- **Framework**: Next.js 14 (App Router), TypeScript
+- **Styling**: Tailwind CSS — Brevo-inspired UI. Subtle, pleasant, frosted glass cards.
+  - Primary: `#4F46E5` (indigo-600)
+  - Background: `#F8FAFC`
+  - Cards: `bg-white/80 backdrop-blur-sm ring-1 ring-slate-200 rounded-xl shadow-sm`
+  - Accent success: `#10B981`, warning: `#F59E0B`, danger: `#EF4444`
+- **Database**: PostgreSQL via Prisma ORM
+- **Realtime**: Server-Sent Events (SSE) for live call status
+- **Auth**: NextAuth.js with credentials provider
+- **Email/SMS**: Brevo API (transactional)
+- **Charts**: Recharts
+- **Icons**: Lucide React
+- **Job queue**: Simple in-process async queue (pg-boss optional if scale needed)
+
+---
+
+## BUILD ORDER
+
+Build strictly in this order. Do not skip ahead.
+
+1. Prisma schema + DB migrations
+2. Module 1 — Master API Config (Settings page)
+3. Module 3 — Bolna API client
+4. Module 5 — Unified Context API endpoint
+5. Module 4 — Call Orchestration Engine
+6. Module 8 Screen 5 — AI Agents listing + Test Call
+7. Module 8 Screen 2 — CRM Leads CRUD
+8. Module 8 Screen 6 — Call Logs
+9. Module 6 — Lead Sources (CSV first, then webhooks)
+10. Module 9 — SSE real-time feed
+11. Module 8 Screen 1 — Dashboard
+12. Module 8 Screens 3 & 4 — Policies + Follow-ups
+13. Module 8 Screen 7 — Lead Sources UI
+14. Module 8 Screen 8 — Automations
+15. Module 7 — Brevo integration
+16. Module 8 Screen 9 — Settings
+
+---
+
+## MODULE 1: MASTER API CONFIG
+
+Build this first. Nothing else works without it.
+
+Create a Settings page at `/settings/api-config`.
+
+Store in DB table `api_config` (single row, org-scoped):
+- `bolna_api_key`
+- `bolna_base_url` (default: `https://api.bolna.dev`)
+- `brevo_api_key`
+- `meta_ads_access_token`
+- `meta_ads_account_id`
+- `webhook_secret` (auto-generated UUID on first setup)
+- `context_api_bearer_token` (auto-generated, shown to user for Bolna configuration)
+- `monthly_checkin_agent_id` (Bolna agent ID for monthly follow-up calls)
+
+Create `lib/api-config.ts`:
+```ts
+export async function getApiConfig(): Promise<ApiConfig> {
+  // always reads from DB, never cached, never hardcoded
+}
+```
+
+Create `lib/bolna-client.ts`:
+- All Bolna API calls go through this single file only
+- Calls `getApiConfig()` on every request to get fresh keys
+- If `bolna_api_key` is missing: return `{ success: false, error: "Bolna API key not configured. Go to Settings → API Config." }`
+- All functions return `{ success: boolean, data?: any, error?: string }`
+- Never throw — always catch and return structured error
+- Log all errors to console with `[BolnaClient]` prefix and include `execution_id` when available
+
+Client can update API key at any time from Settings. No restart, no redeployment needed.
+
+---
+
+## MODULE 2: DATABASE SCHEMA
+
+```prisma
+model ApiConfig {
+  id                        String   @id @default(cuid())
+  org_id                    String   @unique
+  bolna_api_key             String?
+  bolna_base_url            String   @default("https://api.bolna.dev")
+  brevo_api_key             String?
+  meta_ads_access_token     String?
+  meta_ads_account_id       String?
+  webhook_secret            String   @default(cuid())
+  context_api_bearer_token  String   @default(cuid())
+  monthly_checkin_agent_id  String?
+  updated_at                DateTime @updatedAt
+}
+
+model Lead {
+  id                  String    @id @default(cuid())
+  org_id              String
+
+  // Personal
+  full_name           String
+  gender              Gender    @default(OTHER)
+  dob                 DateTime?
+  age                 Int?
+  phone               String                          // 10 digits, no prefix
+  phone_alt           String?
+  email               String?
+
+  // Address (Indian)
+  address_line1       String?
+  address_line2       String?
+  city                String?
+  state               String?
+  pincode             String?
+
+  // Identity (Indian)
+  pan_number          String?
+  aadhaar_number      String?
+
+  // Professional
+  occupation          String?
+  annual_income       BigInt?
+  employer_name       String?
+
+  // Insurance interest
+  insurance_type      InsuranceType?
+  sum_assured_interest BigInt?
+  premium_budget      Int?
+
+  // Lead metadata
+  source              LeadSource   @default(MANUAL)
+  source_campaign_id  String?
+  source_form_id      String?
+  stage               LeadStage    @default(NEW)
+  assigned_to         String?
+  notes               String?
+  tags                String[]
+
+  last_contacted_at   DateTime?
+  next_followup_at    DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  call_logs           CallLog[]
+  policies            Policy[]
+  follow_ups          FollowUp[]
+
+  @@index([phone])
+  @@index([org_id, stage])
+  @@index([org_id, source])
+}
+
+model Policy {
+  id                  String        @id @default(cuid())
+  org_id              String
+  lead_id             String
+  lead                Lead          @relation(fields: [lead_id], references: [id])
+
+  policy_number       String?
+  insurer_name        String?
+  policy_type         InsuranceType
+  sum_assured         BigInt?
+  annual_premium      Int?
+  premium_frequency   PremiumFreq   @default(YEARLY)
+  start_date          DateTime?
+  end_date            DateTime?
+  renewal_date        DateTime?
+
+  nominee_name        String?
+  nominee_relation    String?
+  nominee_dob         DateTime?
+
+  status              PolicyStatus  @default(ACTIVE)
+  documents           Json?
+
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  follow_ups          FollowUp[]
+
+  @@index([org_id, renewal_date])
+  @@index([lead_id])
+}
+
+model CallLog {
+  id                    String      @id @default(cuid())
+  org_id                String
+  lead_id               String?
+  lead                  Lead?       @relation(fields: [lead_id], references: [id])
+
+  bolna_execution_id    String      @unique
+  bolna_agent_id        String
+
+  direction             CallDir     @default(OUTBOUND)
+  phone_number          String
+
+  status                CallStatus  @default(INITIATED)
+  started_at            DateTime    @default(now())
+  ended_at              DateTime?
+  duration_seconds      Int?
+
+  transcript            String?
+  summary               String?
+  recording_url         String?
+
+  disposition_id        String?
+  disposition           Disposition? @relation(fields: [disposition_id], references: [id])
+
+  drop_detected         Boolean     @default(false)
+  drop_reason           String?
+  retry_of_call_id      String?     // self-reference: points to original dropped call
+  retry_call_id         String?     // reverse: points to the retry call
+
+  memory_injected       Json?       // what context was sent to the agent
+  call_type             String?     // new / drop_retry / callback / inbound_known / inbound_new
+  raw_logs              Json?
+
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  @@index([phone_number, created_at])
+  @@index([bolna_agent_id])
+  @@index([org_id, status])
+  @@index([lead_id, created_at])
+}
+
+model Disposition {
+  id              String    @id @default(cuid())
+  org_id          String
+  bolna_agent_id  String
+  label           String
+  color           String    @default("#6366F1")
+  description     String?
+  is_active       Boolean   @default(true)
+  sort_order      Int       @default(0)
+  created_at      DateTime  @default(now())
+
+  call_logs       CallLog[]
+
+  @@index([org_id, bolna_agent_id])
+}
+
+model Automation {
+  id              String         @id @default(cuid())
+  org_id          String
+  name            String
+  type            AutomationType
+  bolna_agent_id  String
+  trigger_config  Json           // varies by type
+  is_active       Boolean        @default(true)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+}
+
+model FollowUp {
+  id              String       @id @default(cuid())
+  org_id          String
+  lead_id         String
+  lead            Lead         @relation(fields: [lead_id], references: [id])
+  policy_id       String?
+  policy          Policy?      @relation(fields: [policy_id], references: [id])
+
+  type            FollowUpType
+  scheduled_at    DateTime
+  completed_at    DateTime?
+  bolna_agent_id  String?
+  call_log_id     String?
+  notes           String?
+  status          FollowUpStatus @default(PENDING)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([org_id, scheduled_at, status])
+  @@index([lead_id])
+}
+
+// ─── Enums ───────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum InsuranceType {
+  LIFE
+  HEALTH
+  MOTOR
+  TERM
+  ULIP
+  ENDOWMENT
+  ACCIDENT
+  TRAVEL
+}
+
+enum LeadSource {
+  META_ADS
+  WEBSITE_FORM
+  CSV_UPLOAD
+  MANUAL
+  INBOUND_CALL
+  REFERRAL
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  INTERESTED
+  DOCS_PENDING
+  POLICY_ISSUED
+  RENEWAL_DUE
+  LOST
+  DO_NOT_CALL
+}
+
+enum PolicyStatus {
+  ACTIVE
+  LAPSED
+  SURRENDERED
+  MATURED
+  CLAIMED
+}
+
+enum PremiumFreq {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+  SINGLE
+}
+
+enum CallDir {
+  OUTBOUND
+  INBOUND
+}
+
+enum CallStatus {
+  INITIATED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  BUSY
+  CANCELLED
+}
+
+enum AutomationType {
+  AUTO_CALL_ON_LEAD
+  RETRY_ON_DROP
+  SCHEDULED_FOLLOWUP
+  MONTHLY_CHECKIN
+}
+
+enum FollowUpType {
+  RENEWAL_REMINDER
+  MONTHLY_CHECKIN
+  CALLBACK_REQUESTED
+  MANUAL
+  POLICY_ANNIVERSARY
+}
+
+enum FollowUpStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  RESCHEDULED
+}
+```
+
+---
+
+## MODULE 3: BOLNA API CLIENT
+
+File: `lib/bolna-client.ts`
+
+Implement these exact functions. All read `bolna_api_key` and `bolna_base_url`
+from DB on every call via `getApiConfig()`.
+
+```
+listAgents()
+  GET {base_url}/v1/agent/all
+  Headers: Authorization: Bearer {bolna_api_key}
+
+getAgent(agentId: string)
+  GET {base_url}/v1/agent/{agentId}
+
+deleteAgent(agentId: string)
+  DELETE {base_url}/v1/agent/{agentId}
+
+getAgentExecutions(agentId: string, page?: number)
+  GET {base_url}/v1/agent/{agentId}/executions
+
+stopQueuedCalls(agentId: string)
+  POST {base_url}/v1/agent/stop/{agentId}
+
+makeCall(payload: MakeCallPayload)
+  POST {base_url}/v1/call
+  Body: {
+    agent_id: string,
+    recipient_phone_number: string,   // always +91XXXXXXXXXX format
+    user_data: {
+      variables: Record<string, string>  // injected into agent prompt
+    }
+  }
+
+getExecution(executionId: string)
+  GET {base_url}/v1/call/status/{executionId}
+
+getExecutionLogs(executionId: string)
+  GET {base_url}/v1/call/logs/{executionId}
+
+listPhoneNumbers()
+  GET {base_url}/v1/phone_number/list
+
+setInboundAgent(phoneNumberId: string, agentId: string)
+  POST {base_url}/v1/phone_number/{phoneNumberId}/agent
+  Body: { agent_id: agentId }
+
+removeInboundAgent(phoneNumberId: string)
+  DELETE {base_url}/v1/phone_number/{phoneNumberId}/agent
+```
+
+---
+
+## MODULE 4: CALL ORCHESTRATION ENGINE
+
+File: `lib/call-engine.ts`
+
+### triggerCallForLead(leadId, agentId, options?)
+
+```
+1. Fetch lead from DB by leadId
+2. Call GET /api/call-context?contact_number={lead.phone}&agent_id={agentId}
+   (call your OWN endpoint — keeps context logic in one place)
+3. Spread the returned JSON as user_data.variables in the Bolna makeCall payload
+4. Call bolnaClient.makeCall({
+     agent_id: agentId,
+     recipient_phone_number: "+91" + lead.phone,
+     user_data: { variables: contextResponse }
+   })
+5. Save new CallLog: {
+     bolna_execution_id: response.execution_id,
+     bolna_agent_id: agentId,
+     lead_id: leadId,
+     phone_number: lead.phone,
+     status: INITIATED,
+     direction: OUTBOUND,
+     memory_injected: contextResponse,
+     call_type: contextResponse.call_type,
+     retry_of_call_id: options?.retryOfCallId
+   }
+6. Start pollCallStatus(executionId, callLogId) as async background task
+7. Return { success: true, call_log_id, execution_id }
+```
+
+### pollCallStatus(executionId, callLogId)
+
+```
+Poll getExecution(executionId) every 4 seconds.
+On each poll, update CallLog.status in DB.
+
+When status = COMPLETED:
+  a. Fetch execution logs → save transcript, summary, recording_url to CallLog
+  b. Update lead.last_contacted_at = now()
+
+  c. DROP DETECTION:
+     Set drop_detected = true if ALL of:
+       - duration_seconds < 45
+       - transcript does NOT contain any of:
+         ["theek hai", "okay", "shukriya", "dhanyavaad", "goodbye", "bye",
+          "interested nahi", "zaroorat nahi", "call back", "baad mein",
+          "confirmed", "policy", "documents", "send karo"]
+       - transcript length > 20 characters (some attempt was made)
+     
+     If drop_detected:
+       - Save drop_reason = "short_call_no_intent_detected"
+       - Schedule retryDroppedCall(callLogId) after 120 seconds
+
+  d. CALLBACK DETECTION:
+     If transcript contains any of:
+       ["call back", "baad mein call", "kal call", "shaam ko", "dopahar",
+        "2 baje", "3 baje", "evening", "morning", "husband se", "wife se",
+        "pooch ke", "sochna hai", "time chahiye"]
+     Then:
+       - Create FollowUp: {
+           type: CALLBACK_REQUESTED,
+           scheduled_at: extractTimeFromTranscript() ?? now() + 4 hours,
+           notes: "Callback requested during call " + executionId,
+           bolna_agent_id: callLog.bolna_agent_id
+         }
+
+  e. Update Lead.stage:
+     - If INTERESTED keywords found → INTERESTED
+     - If NOT_INTERESTED keywords found → LOST (only if repeated)
+
+When status = FAILED or NO_ANSWER after 90s: mark and stop. No retry.
+When status unchanged after 10 minutes: mark as FAILED. Stop.
+```
+
+### retryDroppedCall(originalCallLogId)
+
+```
+1. Fetch original CallLog + Lead
+2. Call triggerCallForLead(lead_id, agent_id, { retryOfCallId: originalCallLogId })
+   — the context endpoint will detect drop_detected = true and return opening_line
+3. Update original CallLog.retry_call_id = newCallLog.id
+```
+
+### scheduledFollowUpCall(followUpId)
+
+```
+1. Fetch FollowUp + Lead + Policy
+2. Update FollowUp.status = IN_PROGRESS
+3. Determine agent:
+   - MONTHLY_CHECKIN type → use api_config.monthly_checkin_agent_id
+   - Others → followUp.bolna_agent_id
+4. Call triggerCallForLead(lead.id, agentId)
+5. Update FollowUp: { call_log_id: newCallLog.id }
+6. When call completes → FollowUp.status = COMPLETED, completed_at = now()
+```
+
+### CONCURRENCY RULES
+
+- Every call gets its own isolated async polling loop
+- Use `setImmediate` / `Promise` — never block
+- Errors in one call's poll loop must NEVER affect other calls
+- Maintain in-memory Map: `activePolls: Map<executionId, NodeJS.Timeout>`
+- On server restart: query DB for INITIATED/IN_PROGRESS calls and resume polling
+
+---
+
+## MODULE 5: UNIFIED CONTEXT API ENDPOINT
+
+**This is the most important endpoint in the system.**
+
+File: `app/api/call-context/route.ts`
+Method: GET
+Auth: Bearer token validation against `api_config.context_api_bearer_token`
+
+This same URL is configured in:
+1. Bolna's Inbound Agent Settings → "Use Internal APIs"
+2. Called by your own `triggerCallForLead()` before every outbound call
+
+### Query params received from Bolna (and your own engine):
+- `contact_number` — phone number of the caller/recipient
+- `agent_id` — Bolna agent ID
+- `execution_id` — unique call execution ID (may be absent for pre-call lookups)
+
+### Logic
+
+```
+1. Validate Bearer token. Return 401 if invalid.
+2. Normalise phone: strip +91, spaces, dashes → 10 digits
+3. Find Lead in DB by phone (exact match on phone or phone_alt)
+4. Find most recent CallLog for this lead (order by created_at DESC, limit 1)
+5. Find pending FollowUp for this lead where status=PENDING and scheduled_at <= now+5min
+
+6. Determine call_type:
+   - No lead found                              → "inbound_new"
+   - No CallLog exists                          → "new"
+   - Last CallLog.drop_detected = true
+     AND last CallLog.created_at > now - 15min  → "drop_retry"
+   - Pending FollowUp of type CALLBACK_REQUESTED → "callback"
+   - Otherwise                                  → "inbound_known" or "outbound_with_history"
+
+7. Build and return JSON:
+```
+
+**Scenario: new**
+```json
+{
+  "call_type": "new",
+  "user_name": "Priya Sharma",
+  "gender": "female",
+  "city": "Chennai",
+  "insurance_type": "term",
+  "context": "",
+  "opening_line": "",
+  "previous_execution_id": ""
+}
+```
+
+**Scenario: drop_retry**
+```json
+{
+  "call_type": "drop_retry",
+  "user_name": "Priya Sharma",
+  "gender": "female",
+  "context": "[summary of last call]",
+  "opening_line": "Priya ji, maafi chahta hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karta hoon jahan hamne baat chodi thi.",
+  "previous_execution_id": "exec_abc123",
+  "previous_summary": "[full summary]"
+}
+```
+
+**Scenario: callback**
+```json
+{
+  "call_type": "callback",
+  "user_name": "Priya Sharma",
+  "gender": "female",
+  "context": "[summary of last call]",
+  "opening_line": "Priya ji, aapne humse baad mein call karne ko kaha tha. Main wapas aa gaya hoon, kya abhi baat kar sakte hain?",
+  "callback_reason": "[notes from follow-up record]",
+  "previous_execution_id": "exec_abc123"
+}
+```
+
+**Scenario: inbound_known / outbound_with_history**
+```json
+{
+  "call_type": "inbound_known",
+  "user_name": "Priya Sharma",
+  "gender": "female",
+  "city": "Chennai",
+  "insurance_type": "term",
+  "policy_number": "HDFC-TRM-2024-001",
+  "renewal_date": "2026-08-15",
+  "account_status": "POLICY_ISSUED",
+  "context": "[summary of last call]",
+  "opening_line": ""
+}
+```
+
+**Scenario: inbound_new**
+```json
+{
+  "call_type": "inbound_new",
+  "user_name": "",
+  "gender": "",
+  "context": "",
+  "opening_line": ""
+}
+```
+
+### Performance requirements
+- Total response time < 800ms (Bolna may timeout)
+- DB queries must use indexes (phone, created_at)
+- Never do N+1 queries — use Prisma `include`
+
+### Also log
+- Create or update a CallLog entry for this lookup so there is a record
+  that context was fetched for this execution_id
+
+---
+
+## MODULE 6: LEAD SOURCES
+
+### A) Meta Ads Webhook
+`POST /api/webhooks/meta-leads`
+
+```
+1. Verify X-Hub-Signature-256 header using meta_ads_access_token as secret
+2. Parse Meta lead form payload
+3. Map fields:
+   - full_name ← first_name + last_name
+   - phone ← phone_number (strip +91 and spaces)
+   - email ← email
+   - city ← city
+   - insurance_type ← custom field "insurance_type" if present
+   - source_campaign_id ← campaign_id
+   - source_form_id ← form_id
+   - source = META_ADS
+4. Create Lead in DB (skip if phone already exists for this org)
+5. If automation AUTO_CALL_ON_LEAD is active for this org:
+   Schedule triggerCallForLead() after 30 seconds
+6. Return HTTP 200 immediately. All processing is async.
+```
+
+### B) Website Form
+`POST /api/webhooks/website-form`
+
+Accept JSON body:
+```json
+{
+  "org_id": "xxx",
+  "full_name": "string",
+  "phone": "9876543210",
+  "email": "string",
+  "gender": "male|female|other",
+  "dob": "YYYY-MM-DD",
+  "insurance_type": "term|health|life|motor",
+  "city": "string",
+  "pincode": "string"
+}
+```
+
+Validate:
+- phone: 10 digits, starts with 6–9
+- org_id: must exist in DB
+
+Create lead with `source = WEBSITE_FORM`.
+If automation active: schedule call after 30 seconds.
+Return `{ success: true, lead_id: "xxx" }`.
+
+Also expose `GET /api/form-embed/:orgId` which returns
+a self-contained HTML form snippet clients paste on their website.
+The snippet POSTs to your webhook URL with the org_id pre-filled.
+
+### C) CSV Bulk Import
+`POST /api/leads/bulk-import`
+
+- Accept `multipart/form-data` with `file` (CSV) and `org_id`
+- Parse CSV. Expected columns:
+  `full_name, phone, gender, dob, email, city, state, pincode, insurance_type, notes`
+- Validate each row:
+  - phone: 10 digits, starts with 6–9
+  - gender: male/female/other (case-insensitive)
+  - Skip rows with invalid phone
+- Deduplicate: skip rows where phone already exists for this org
+- Batch insert valid rows (use Prisma `createMany` with skipDuplicates)
+- Return:
+  ```json
+  { "imported": 142, "skipped_duplicates": 18, "skipped_invalid": 3, "errors": [] }
+  ```
+- Optional: if `trigger_calls=true` param is set, schedule calls for all imported leads
+
+---
+
+## MODULE 7: BREVO INTEGRATION
+
+File: `lib/brevo-client.ts`
+
+```ts
+sendSMS(phone: string, message: string): Promise<{success: boolean}>
+  POST https://api.brevo.com/v3/transactionalSMS/sms
+  Headers: api-key: {brevo_api_key}
+  Body: { sender: "VoiceCRM", recipient: "+91"+phone, content: message }
+
+sendEmail(to: string, subject: string, htmlContent: string, templateId?: number)
+  POST https://api.brevo.com/v3/smtp/email
+
+sendTemplateEmail(to: string, templateId: number, params: Record<string, string>)
+  Same endpoint with templateId and params instead of htmlContent
+```
+
+**Use cases wired up:**
+- Lead created → SMS: "Namaste {name}! Hamari team aapko jaldi hi call karegi. – [Company]"
+- Call scheduled → SMS: "Aapka call {time} par scheduled hai."
+- Policy renewal < 30 days → Email: renewal reminder with policy details
+- Follow-up scheduled → SMS notification
+
+All SMS/email sending is fire-and-forget (catch errors, log, don't block).
+
+---
+
+## MODULE 8: FRONTEND SCREENS
+
+**Design system for all screens:**
+- `bg-slate-50` page background
+- Cards: `bg-white/80 backdrop-blur-sm ring-1 ring-slate-200 rounded-xl shadow-sm p-6`
+- Primary buttons: `bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2`
+- Secondary buttons: `ring-1 ring-slate-200 bg-white hover:bg-slate-50 rounded-lg px-4 py-2`
+- Table rows: `hover:bg-slate-50 transition-colors`
+- Stage badges: coloured pill spans with appropriate bg/text colours per stage
+- All dates in IST (Asia/Kolkata). Display format: `DD MMM YYYY, HH:mm`
+- Phone display: `+91 XXXXX XXXXX`
+- Currency: `₹X,XX,XXX` Indian format
+
+---
+
+### Screen 1: /dashboard
+
+**Top KPI row (4 metric cards):**
+- Total Leads (all time)
+- Calls Today (count from CallLog where started_at = today)
+- Active Calls (live count from SSE feed)
+- Conversion Rate (POLICY_ISSUED / total leads × 100, rounded)
+
+**Live calls feed** (SSE-powered):
+- Auto-updates every 3s via `/api/calls/live-feed`
+- Shows: lead name, phone, agent name, status badge, duration counter
+- Status badges: RINGING (amber), IN_PROGRESS (green pulse), COMPLETED (gray), FAILED (red)
+
+**Lead funnel chart** (Recharts FunnelChart or BarChart):
+- Stages: NEW → CONTACTED → INTERESTED → DOCS_PENDING → POLICY_ISSUED
+- Count per stage
+
+**Upcoming follow-ups today** (list, max 5):
+- Lead name, type, scheduled time, "Call Now" button
+
+**Recent call logs** (table, last 10):
+- Lead name, phone, agent, duration, disposition, timestamp
+
+---
+
+### Screen 2: /crm/leads
+
+**List view:**
+- Searchable by name / phone / email
+- Filterable by: stage, source, insurance_type, city, assigned_to, date range
+- Sortable by: created_at, last_contacted_at, next_followup_at
+- Columns: name, phone, source badge, insurance type, stage badge, last contacted, actions
+- Pagination: 25 per page
+
+**Quick actions per row:**
+- "Call Now" → opens call modal
+- "View" → lead detail page
+- "Edit" inline
+
+**Add Lead slide-over panel** (from "+ Add Lead" button):
+All fields from Lead schema. Phone validation live. Duplicate phone warning.
+
+**Lead detail page `/crm/leads/[id]`:**
+
+Left column (2/3 width):
+- Editable form with all fields grouped:
+  - Personal Details (name, gender, dob, phone, email)
+  - Address (line1, line2, city, state, pincode)
+  - Identity (PAN, Aadhaar — masked display, show on click)
+  - Professional (occupation, income, employer)
+  - Insurance Interest (type, sum assured, premium budget)
+- Auto-save on field blur (debounced 500ms)
+- "Call Now" button prominent at top
+- Stage selector (pill buttons for each stage)
+
+Right column (1/3 width):
+- Activity timeline:
+  - Call logs (with status, duration, disposition)
+  - Stage changes
+  - Notes added
+  - Lead source event
+- "Add Note" quick input
+- Linked policies (mini cards)
+- Upcoming follow-ups
+
+---
+
+### Screen 3: /crm/policies
+
+**List view:**
+- Columns: policy number, lead name, type, insurer, premium, renewal date, status
+- Renewal date column: red if < 30 days, amber if < 90 days
+- Filter by: type, status, insurer, renewal date range
+
+**Policy detail:**
+- All fields from Policy schema
+- Linked lead card
+- Document attachments (name + URL)
+- Renewal follow-up scheduler
+
+---
+
+### Screen 4: /crm/follow-ups
+
+**Dual view** (toggle Calendar / List):
+
+Calendar: monthly view, each day shows count of follow-ups
+List: grouped by date, shows lead name, type badge, scheduled time, agent, status
+
+**"Today" section** always shown at top:
+- Highlighted differently
+- One-click "Call Now" per item
+- Monthly check-in calls shown with policy anniversary icon
+
+**Follow-up types colour coding:**
+- RENEWAL_REMINDER: amber
+- MONTHLY_CHECKIN: purple
+- CALLBACK_REQUESTED: blue
+- MANUAL: gray
+- POLICY_ANNIVERSARY: green
+
+---
+
+### Screen 5: /agents
+
+**Agent cards grid** (fetched live from Bolna):
+Each card shows:
+- Agent name and ID
+- Tags/type if available
+- Assigned phone numbers (from listPhoneNumbers, matched to agent)
+- Active call count today (from local CallLog)
+- "Test Call" button → opens modal
+
+**Test Call modal:**
+- Phone number input (validated, +91 prefix auto-added)
+- Optional: name field (populates {user_name} variable)
+- "Start Call" button → triggers makeCall
+- Live status display via SSE (INITIATED → RINGING → IN_PROGRESS → COMPLETED)
+- When completed: show duration, basic transcript if available
+
+**Inbound configuration panel** (below agent cards):
+- Phone numbers list from Bolna
+- Each number: dropdown to assign an agent
+- "Assign" / "Remove" buttons → call setInboundAgent / removeInboundAgent
+- Show current assignment status
+
+---
+
+### Screen 6: /call-logs
+
+**Filters:**
+- Agent (dropdown from Bolna agents list)
+- Date range picker
+- Status (multi-select)
+- Disposition (dropdown)
+- Direction (Inbound / Outbound)
+- Has recording (checkbox)
+
+**Table columns:**
+- Lead name (link to lead detail), phone
+- Agent name
+- Direction badge (IN/OUT)
+- Duration (MM:SS)
+- Status badge
+- Disposition label (coloured)
+- Call type badge (new / drop_retry / callback / inbound)
+- Timestamp
+
+**Expandable row:**
+Click any row → expands below to show:
+- Transcript viewer (scrollable, role-labelled: Agent / Customer)
+- Audio player (if recording_url exists) — HTML5 audio element
+- Summary section
+- Raw logs toggle (collapsed by default, JSON viewer)
+- Disposition selector (dropdown to label/re-label)
+- "Retry Call" button if status = FAILED or drop_detected = true
+
+**Export:** "Export CSV" button respects current filters.
+
+---
+
+### Screen 7: /lead-sources
+
+**Four sub-tabs:**
+
+**Meta Ads tab:**
+- Input: Access Token, Ad Account ID
+- "Connect" button → saves to api_config, tests connection
+- Once connected: show lead forms list from Meta API
+- Toggle per form: auto-create lead + auto-call
+- Show recent Meta leads (last 10 with timestamps)
+
+**Website Form tab:**
+- Show embeddable snippet (pre-filled with org_id)
+- Copy button
+- Field mapping config (which form field → which Lead field)
+- Test: paste a sample payload and see what lead would be created
+
+**CSV Import tab:**
+- Drag-and-drop zone
+- Column mapping UI (detect headers, let user map to Lead fields)
+- Preview table (first 5 rows)
+- "Import" button with progress bar
+- Import history (date, count imported, errors)
+
+**Brevo tab:**
+- Brevo API key input + test button
+- SMS sender name config
+- Toggle: send SMS on lead created
+- Toggle: send SMS on call scheduled
+- Toggle: send renewal reminder emails
+- Test SMS / test email buttons
+
+---
+
+### Screen 8: /automations
+
+**Automation rules list:**
+- Name, type badge, agent name, status toggle, last triggered
+
+**Create/Edit automation slide-over:**
+
+Required fields:
+- Name
+- Type (AUTO_CALL_ON_LEAD / RETRY_ON_DROP / SCHEDULED_FOLLOWUP / MONTHLY_CHECKIN)
+- Agent (dropdown from Bolna agents)
+- Active toggle
+
+Type-specific config:
+- AUTO_CALL_ON_LEAD:
+  - Delay after lead creation: 0s / 30s / 2min / 5min
+  - Lead sources to apply to (checkboxes: Meta / Form / CSV / All)
+  - Business hours only toggle (9am–7pm IST)
+- RETRY_ON_DROP:
+  - Retry delay: 2 min / 5 min / 10 min
+  - Max retries: 1 / 2 / 3
+- SCHEDULED_FOLLOWUP:
+  - Days before renewal to call (e.g. 30, 15, 7)
+- MONTHLY_CHECKIN:
+  - Day of month to call
+  - Agent: always uses api_config.monthly_checkin_agent_id
+
+---
+
+### Screen 9: /settings
+
+**Sub-tabs:**
+
+**API Config tab:**
+All keys with:
+- Show/hide toggle (masked by default)
+- "Test connection" button per key (Bolna, Brevo, Meta)
+- Copy button
+- Last updated timestamp
+
+Special read-only fields:
+- Context API URL: `https://yourdomain.com/api/call-context`
+  (copy button — user pastes this into Bolna Inbound Settings)
+- Context API Bearer Token: `Bearer xxxxx`
+  (copy button — user pastes this into Bolna Inbound Settings)
+- Meta Webhook URL: `https://yourdomain.com/api/webhooks/meta-leads`
+- Website Form Webhook URL: `https://yourdomain.com/api/webhooks/website-form`
+
+**Dispositions tab:**
+- Per-agent disposition management
+- Agent selector → shows that agent's dispositions
+- Add/edit/delete disposition labels
+- Colour picker per disposition
+- Drag to reorder
+
+**Team tab:**
+- List of team members (simple: name, email, role)
+- Invite by email
+- Assign leads to team members
+
+**Webhooks tab:**
+- All webhook URLs displayed with copy buttons
+- Webhook logs (last 50 events with status)
+- Test webhook button (sends a test payload)
+
+---
+
+## MODULE 9: SSE REAL-TIME CALL FEED
+
+File: `app/api/calls/live-feed/route.ts`
+
+```
+GET /api/calls/live-feed
+
+1. Set headers:
+   Content-Type: text/event-stream
+   Cache-Control: no-cache
+   Connection: keep-alive
+
+2. On connection:
+   - Query DB for all CallLog where status IN [INITIATED, RINGING, IN_PROGRESS]
+   - Stream current state as initial event
+
+3. Every 3 seconds:
+   - Query same + any completed calls from last 30 seconds
+   - Send event: data: {JSON}\n\n
+
+4. Every 15 seconds:
+   - Send heartbeat: : ping\n\n
+
+5. On client disconnect: clear interval, close
+
+Event payload shape:
+{
+  "type": "call_update",
+  "calls": [
+    {
+      "execution_id": "xxx",
+      "call_log_id": "xxx",
+      "lead_name": "Priya Sharma",
+      "phone": "98765 43210",
+      "agent_name": "Insurance Agent Tamil",
+      "status": "IN_PROGRESS",
+      "direction": "OUTBOUND",
+      "call_type": "new",
+      "duration_seconds": 47,
+      "started_at": "2026-06-10T10:30:00.000Z"
+    }
+  ],
+  "active_count": 3,
+  "timestamp": "2026-06-10T10:30:47.000Z"
+}
+
+Frontend: use EventSource API. Reconnect automatically on disconnect.
+```
+
+---
+
+## CRITICAL IMPLEMENTATION RULES
+
+1. **Never hardcode any API key anywhere.** Always read from DB via `getApiConfig()`.
+2. **All Bolna calls go ONLY through `lib/bolna-client.ts`** — never call Bolna directly from a component or other file.
+3. **All async operations isolated** — one call failing must never affect concurrent calls.
+4. **Phone numbers**: stored as 10 digits (no prefix, no spaces). Displayed as `+91 XXXXX XXXXX`. Always prepend `+91` when sending to Bolna.
+5. **All dates**: stored as UTC in DB. Displayed in IST (Asia/Kolkata). Use `Intl.DateTimeFormat` with `timeZone: 'Asia/Kolkata'`.
+6. **Indian validation**:
+   - PAN: `/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/`
+   - Aadhaar: 12 digits
+   - Phone: 10 digits, starts with 6–9
+   - Pincode: 6 digits
+7. **Error messages**: always user-friendly. Never show raw API errors. Log details to console.
+8. **On server restart**: resume polling for any CallLog with status INITIATED or IN_PROGRESS.
+9. **Context API response time**: must be < 800ms. Index all lookup fields.
+10. **All monetary values**: stored as integers (paise for premiums) or BigInt (sum assured). Display with `₹` and Indian number formatting.
+
+---
+
+## BOLNA AGENT PROMPT TEMPLATE
+
+When helping the client configure their Bolna agents, provide this template structure.
+The agent prompt should use these variable placeholders:
+
+```
+{{#if opening_line}}
+{{opening_line}}
+{{else}}
+Namaste! Kya main {{user_name}} ji se baat kar sakta hoon?
+{{/if}}
+
+{{#if context}}
+[PREVIOUS CALL CONTEXT: {{context}}]
+Iss context ko dhyan mein rakh ke baat karo.
+{{/if}}
+
+{{#if policy_number}}
+[EXISTING POLICY: {{policy_type}} — {{policy_number}}, renewal: {{renewal_date}}]
+{{/if}}
+
+Aap ek friendly insurance advisor hain jo {{insurance_type}} insurance ke baare mein baat karenge.
+City: {{city}}. Gender context: {{gender}}.
+```
+
+The variables `user_name`, `context`, `opening_line`, `policy_type`, `renewal_date`,
+`insurance_type`, `city`, `gender` are all populated by the Unified Context API automatically.
+
+---
+
+*End of VoiceCRM Master Build Prompt*
