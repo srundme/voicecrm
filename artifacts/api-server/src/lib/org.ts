@@ -9,8 +9,9 @@ function token(bytes: number): string {
 }
 
 export function publicBaseUrl(): string {
-  const domain = process.env["REPLIT_DEV_DOMAIN"];
-  if (domain) return `https://${domain}`;
+  if (process.env["PUBLIC_URL"]) return process.env["PUBLIC_URL"].replace(/\/$/, "");
+  if (process.env["RAILWAY_PUBLIC_DOMAIN"]) return `https://${process.env["RAILWAY_PUBLIC_DOMAIN"]}`;
+  if (process.env["REPLIT_DEV_DOMAIN"]) return `https://${process.env["REPLIT_DEV_DOMAIN"]}`;
   return "";
 }
 
