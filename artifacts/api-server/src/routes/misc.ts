@@ -172,12 +172,17 @@ async function ingestLead(opts: {
           ),
         );
       if (autos[0] && lead) {
-        await triggerCall({
+        const outcome = await triggerCall({
           agentId: autos[0].bolna_agent_id,
           phone: lead.phone,
           leadId: lead.id,
           callType: "new_lead",
         });
+        if (outcome.success) {
+          logger.info({ leadId: lead.id, callLogId: outcome.call_log_id }, "auto-call triggered");
+        } else {
+          logger.error({ leadId: lead.id, error: outcome.error }, "auto-call failed");
+        }
       }
     } catch (err) {
       logger.error({ err }, "auto-call after webhook lead failed");
