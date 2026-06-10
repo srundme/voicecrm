@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "dgh0eta9KKqb2Dfu0g-UU"
+uri = "file://VoiceCRM_Build_Spec.md"
+type = "text"
+title = "VoiceCRM — Complete Build Specification"
