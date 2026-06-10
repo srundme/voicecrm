@@ -8,3 +8,4 @@ export * from "./automations";
 export * from "./follow-ups";
 export * from "./team";
 export * from "./lead-sources";
+export * from "./campaigns";
