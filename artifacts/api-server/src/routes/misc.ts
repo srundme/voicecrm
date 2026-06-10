@@ -10,7 +10,7 @@ import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
-import { triggerCall, startPolling, maybeScheduleCallback } from "../lib/call-engine";
+import { triggerCall, startPolling, maybeScheduleCallback, isProperCallEnding } from "../lib/call-engine";
 import { runComplianceCheck } from "../lib/compliance";
 import {
   bolna,
@@ -381,10 +381,11 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     const duration_seconds = bodyDuration ?? exec.data.duration_seconds ?? null;
     const isEnded = exec.data.ended || bodyEnded;
 
+    // Drop = hard failure OR completed but no proper goodbye/refusal in transcript
     const dropDetected =
       !isEnded ? false :
-      (duration_seconds != null && duration_seconds < 10) ||
-      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status);
+      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status) ||
+      (status === "COMPLETED" && !isProperCallEnding(bodyTranscript, bodySummary));
 
     const [updated] = await db
       .update(callLogsTable)
@@ -413,8 +414,10 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
   } else if (bodyEnded) {
     // getExecution failed but the webhook body says call ended — update from body only
     const status = mapBolnaStatusToCallStatus(bodyStatus);
-    const dropDetected = (bodyDuration != null && bodyDuration < 10) ||
-      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status);
+    // Drop = hard failure OR completed but no proper goodbye/refusal in transcript
+    const dropDetected =
+      ["FAILED", "NO_ANSWER", "BUSY", "CANCELLED"].includes(status) ||
+      (status === "COMPLETED" && !isProperCallEnding(bodyTranscript, bodySummary));
     const [updated] = await db
       .update(callLogsTable)
       .set({
