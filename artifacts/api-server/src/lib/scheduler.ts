@@ -5,7 +5,10 @@ import {
   policiesTable,
   leadsTable,
   callLogsTable,
+  campaignsTable,
+  campaignLeadsTable,
 } from "@workspace/db";
+import type { CampaignRow } from "@workspace/db";
 import { triggerCall } from "./call-engine";
 import { sendEmail } from "./brevo";
 import { ensureApiConfig, DEFAULT_ORG_ID } from "./org";
@@ -296,6 +299,130 @@ async function processRenewalReminders(): Promise<void> {
   }
 }
 
+/**
+ * Drive all ACTIVE campaigns: check call window, enforce interval, and dial
+ * the next PENDING lead. Claims atomically to prevent double-dials across
+ * overlapping ticks. Marks the campaign COMPLETED when no PENDING leads remain.
+ */
+async function processSingleCampaign(
+  campaign: CampaignRow,
+  currentTime: string,
+  now: Date,
+): Promise<void> {
+  if (currentTime < campaign.window_start || currentTime >= campaign.window_end) return;
+
+  if (campaign.last_dialed_at) {
+    const elapsedMin =
+      (now.getTime() - campaign.last_dialed_at.getTime()) / 60_000;
+    if (elapsedMin < campaign.interval_minutes) return;
+  }
+
+  const [lead] = await db
+    .select()
+    .from(campaignLeadsTable)
+    .where(
+      and(
+        eq(campaignLeadsTable.campaign_id, campaign.id),
+        eq(campaignLeadsTable.status, "PENDING"),
+      ),
+    )
+    .limit(1);
+
+  if (!lead) {
+    await db
+      .update(campaignsTable)
+      .set({ status: "COMPLETED", updated_at: now })
+      .where(
+        and(
+          eq(campaignsTable.id, campaign.id),
+          eq(campaignsTable.status, "ACTIVE"),
+        ),
+      );
+    logger.info({ campaignId: campaign.id }, "campaign completed — all leads dialed");
+    return;
+  }
+
+  const [claimed] = await db
+    .update(campaignLeadsTable)
+    .set({ status: "IN_PROGRESS" })
+    .where(
+      and(
+        eq(campaignLeadsTable.id, lead.id),
+        eq(campaignLeadsTable.status, "PENDING"),
+      ),
+    )
+    .returning();
+  if (!claimed) return;
+
+  await db
+    .update(campaignsTable)
+    .set({ last_dialed_at: now })
+    .where(eq(campaignsTable.id, campaign.id));
+
+  const outcome = await triggerCall({
+    agentId: campaign.agent_id,
+    phone: claimed.phone,
+    agentName: campaign.agent_name,
+    callType: "campaign",
+    variables: {
+      name: claimed.full_name,
+      is_campaign: "true",
+      campaign_name: campaign.name,
+    },
+  });
+
+  if (outcome.success) {
+    await db
+      .update(campaignLeadsTable)
+      .set({
+        status: "CALLED",
+        call_log_id: outcome.call_log_id,
+        called_at: now,
+      })
+      .where(eq(campaignLeadsTable.id, claimed.id));
+    logger.info(
+      { campaignId: campaign.id, phone: claimed.phone },
+      "campaign call triggered",
+    );
+  } else {
+    await db
+      .update(campaignLeadsTable)
+      .set({ status: "FAILED" })
+      .where(eq(campaignLeadsTable.id, claimed.id));
+    logger.warn(
+      { campaignId: campaign.id, phone: claimed.phone, error: outcome.error },
+      "campaign call failed",
+    );
+  }
+}
+
+async function processCampaigns(): Promise<void> {
+  const now = new Date();
+  const istMs = now.getTime() + 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(istMs);
+  const hh = istNow.getUTCHours().toString().padStart(2, "0");
+  const mm = istNow.getUTCMinutes().toString().padStart(2, "0");
+  const currentTime = `${hh}:${mm}`;
+
+  const active = await db
+    .select()
+    .from(campaignsTable)
+    .where(
+      and(
+        eq(campaignsTable.org_id, DEFAULT_ORG_ID),
+        eq(campaignsTable.status, "ACTIVE"),
+      ),
+    );
+
+  for (const campaign of active) {
+    try {
+      await processSingleCampaign(campaign, currentTime, now);
+    } catch (err) {
+      logger.error({ err, campaignId: campaign.id }, "campaign tick failed");
+    }
+  }
+}
+
 async function tick(): Promise<void> {
   if (running) return; // Prevent overlapping ticks.
   running = true;
@@ -303,6 +430,7 @@ async function tick(): Promise<void> {
     await processDueFollowUps();
     await completeFinishedFollowUps();
     await processRenewalReminders();
+    await processCampaigns();
   } catch (err) {
     logger.error({ err }, "scheduler tick failed");
   } finally {
