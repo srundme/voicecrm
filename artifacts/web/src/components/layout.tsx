@@ -22,7 +22,6 @@ import {
   Link as LinkIcon,
   Tag,
   Users2,
-  Workflow
 } from "lucide-react";
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -34,7 +33,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: "Calls", href: "/calls", icon: Phone },
     { label: "Policies", href: "/policies", icon: ShieldAlert },
     { label: "Follow-ups", href: "/follow-ups", icon: CalendarDays },
-    { label: "Automations", href: "/automations", icon: Workflow },
     { label: "AI Agents", href: "/agents", icon: Bot },
     { label: "Lead Sources", href: "/lead-sources", icon: LinkIcon },
     { label: "Dispositions", href: "/dispositions", icon: Tag },

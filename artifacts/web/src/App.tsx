@@ -12,7 +12,6 @@ import Calls from "@/pages/calls";
 import CallDetail from "@/pages/call-detail";
 import Policies from "@/pages/policies";
 import FollowUps from "@/pages/follow-ups";
-import Automations from "@/pages/automations";
 import Agents from "@/pages/agents";
 import LeadSources from "@/pages/lead-sources";
 import Dispositions from "@/pages/dispositions";
@@ -32,7 +31,6 @@ function Router() {
         <Route path="/calls/:id" component={CallDetail} />
         <Route path="/policies" component={Policies} />
         <Route path="/follow-ups" component={FollowUps} />
-        <Route path="/automations" component={Automations} />
         <Route path="/agents" component={Agents} />
         <Route path="/lead-sources" component={LeadSources} />
         <Route path="/dispositions" component={Dispositions} />

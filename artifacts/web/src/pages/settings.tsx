@@ -1,4 +1,8 @@
-import { useGetApiConfig, useUpdateApiConfig, useTestConnection, getGetApiConfigQueryKey } from "@workspace/api-client-react";
+import {
+  useGetApiConfig, useUpdateApiConfig, useTestConnection, getGetApiConfigQueryKey,
+  useListAutomations, useCreateAutomation, useUpdateAutomation, getListAutomationsQueryKey,
+  useListAgents, AutomationType,
+} from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,7 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 type Service = "bolna" | "brevo" | "meta";
@@ -32,6 +37,59 @@ export default function Settings() {
   const testConnection = useTestConnection();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const { data: automationsData } = useListAutomations();
+  const { data: agentsData } = useListAgents();
+  const createAutomation = useCreateAutomation();
+  const updateAutomation = useUpdateAutomation();
+
+  type RuleState = { id?: string; is_active: boolean; bolna_agent_id: string };
+  const [rules, setRules] = useState<Record<string, RuleState>>({
+    AUTO_CALL_ON_LEAD: { is_active: false, bolna_agent_id: "" },
+    RETRY_ON_DROP: { is_active: false, bolna_agent_id: "" },
+  });
+  const [savingRules, setSavingRules] = useState(false);
+
+  useEffect(() => {
+    if (!automationsData) return;
+    setRules(prev => {
+      const next = { ...prev };
+      for (const a of automationsData) {
+        if (a.type === "AUTO_CALL_ON_LEAD" || a.type === "RETRY_ON_DROP") {
+          next[a.type] = { id: a.id, is_active: a.is_active, bolna_agent_id: a.bolna_agent_id };
+        }
+      }
+      return next;
+    });
+  }, [automationsData]);
+
+  const handleSaveRules = async () => {
+    setSavingRules(true);
+    try {
+      const NAMES: Record<string, string> = {
+        AUTO_CALL_ON_LEAD: "Auto-call new leads",
+        RETRY_ON_DROP: "Retry dropped calls",
+      };
+      for (const [type, rule] of Object.entries(rules)) {
+        if (rule.id) {
+          await updateAutomation.mutateAsync({
+            id: rule.id,
+            data: { is_active: rule.is_active, bolna_agent_id: rule.bolna_agent_id || undefined },
+          });
+        } else if (rule.bolna_agent_id) {
+          await createAutomation.mutateAsync({
+            data: { name: NAMES[type] || type, type: type as AutomationType, bolna_agent_id: rule.bolna_agent_id, is_active: rule.is_active },
+          });
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: getListAutomationsQueryKey() });
+      toast({ title: "Automation rules saved" });
+    } catch {
+      toast({ variant: "destructive", title: "Failed to save automation rules" });
+    } finally {
+      setSavingRules(false);
+    }
+  };
 
   const [reveal, setReveal] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState<Service | null>(null);
@@ -191,6 +249,55 @@ export default function Settings() {
           <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
             <Button onClick={handleSave} disabled={updateConfig.isPending}>
               {updateConfig.isPending ? "Saving..." : (<><Save className="w-4 h-4 mr-2" />Save Preferences</>)}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-primary" />
+              <CardTitle>Automation Rules</CardTitle>
+            </div>
+            <CardDescription>AI calls that fire automatically — no manual setup needed per lead.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {[
+              { type: "AUTO_CALL_ON_LEAD", label: "Auto-call new leads", desc: "When a lead is added or arrives via webhook, an AI agent calls them immediately." },
+              { type: "RETRY_ON_DROP", label: "Retry dropped calls", desc: "When a call drops unexpectedly, an AI agent retries automatically." },
+            ].map(({ type, label, desc }) => {
+              const rule = rules[type];
+              const agents = agentsData?.data || [];
+              return (
+                <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border p-4">
+                  <Switch
+                    checked={rule.is_active}
+                    onCheckedChange={(v) => setRules(r => ({ ...r, [type]: { ...r[type], is_active: v } }))}
+                  />
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <Label className="text-sm font-medium">{label}</Label>
+                    <p className="text-sm text-muted-foreground">{desc}</p>
+                  </div>
+                  <Select
+                    value={rule.bolna_agent_id}
+                    onValueChange={(v) => setRules(r => ({ ...r, [type]: { ...r[type], bolna_agent_id: v } }))}
+                  >
+                    <SelectTrigger className="w-48 shrink-0">
+                      <SelectValue placeholder={agents.length ? "Pick agent" : "No agents yet"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agents.map(a => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+          </CardContent>
+          <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
+            <Button onClick={handleSaveRules} disabled={savingRules}>
+              {savingRules ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving...</> : <><Save className="w-4 h-4 mr-2" />Save Rules</>}
             </Button>
           </CardFooter>
         </Card>
