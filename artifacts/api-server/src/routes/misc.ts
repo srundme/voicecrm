@@ -187,6 +187,18 @@ async function ingestLead(opts: {
   return { ok: true, message: `Lead created: ${lead!.id}` };
 }
 
+router.get("/webhooks/meta", async (req, res): Promise<void> => {
+  const cfg = await ensureApiConfig();
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode === "subscribe" && token === cfg.webhook_secret) {
+    res.status(200).send(String(challenge ?? ""));
+    return;
+  }
+  res.status(403).json({ error: "Verification failed" });
+});
+
 router.post("/webhooks/meta", async (req, res): Promise<void> => {
   const cfg = await ensureApiConfig();
   if (!checkSecret(req, cfg.webhook_secret)) {
