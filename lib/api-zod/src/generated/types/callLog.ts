@@ -41,6 +41,12 @@ export interface CallLog {
   /** @nullable */
   drop_reason?: string | null;
   /** @nullable */
+  compliance_status?: string | null;
+  /** @nullable */
+  compliance_score?: number | null;
+  /** @nullable */
+  compliance_data?: Record<string, unknown> | null;
+  /** @nullable */
   retry_of_call_id?: string | null;
   /** @nullable */
   retry_call_id?: string | null;
