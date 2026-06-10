@@ -84,3 +84,19 @@ export const followUpStatusEnum = pgEnum("follow_up_status", [
   "SKIPPED",
   "RESCHEDULED",
 ]);
+
+export const campaignStatusEnum = pgEnum("campaign_status", [
+  "DRAFT",
+  "ACTIVE",
+  "PAUSED",
+  "COMPLETED",
+  "CANCELLED",
+]);
+
+export const campaignLeadStatusEnum = pgEnum("campaign_lead_status", [
+  "PENDING",
+  "IN_PROGRESS",
+  "CALLED",
+  "FAILED",
+  "SKIPPED",
+]);
