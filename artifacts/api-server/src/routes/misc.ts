@@ -11,6 +11,7 @@ import { normalizePhone } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
 import { triggerCall, startPolling, maybeScheduleCallback } from "../lib/call-engine";
+import { runComplianceCheck } from "../lib/compliance";
 import {
   bolna,
   mapBolnaStatusToCallStatus,
@@ -403,6 +404,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     }
     if (updated && isEnded && !dropDetected && status === "COMPLETED") {
       void maybeScheduleCallback(updated);
+      void runComplianceCheck(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
@@ -428,6 +430,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
       .returning();
     if (updated && !dropDetected && status === "COMPLETED") {
       void maybeScheduleCallback(updated);
+      void runComplianceCheck(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
