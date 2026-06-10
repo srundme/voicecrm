@@ -162,6 +162,19 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
     const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
     if (!intent) return;
 
+    // Dedup: if a CALLBACK_REQUESTED follow-up already exists for this call, skip.
+    const [existing] = await db
+      .select({ id: followUpsTable.id })
+      .from(followUpsTable)
+      .where(
+        and(
+          eq(followUpsTable.call_log_id, call.id),
+          eq(followUpsTable.type, "CALLBACK_REQUESTED"),
+        ),
+      )
+      .limit(1);
+    if (existing) return;
+
     await db.insert(followUpsTable).values({
       org_id: call.org_id,
       lead_id: leadId,
