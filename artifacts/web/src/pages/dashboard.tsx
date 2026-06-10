@@ -6,13 +6,38 @@ import { PhoneCall, Users, Phone, TrendingUp, Calendar, AlertCircle } from "luci
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+type TrendPoint = { date: string; calls: number; leads: number };
+
+function useDashboardTrends() {
+  return useQuery<TrendPoint[]>({
+    queryKey: ["dashboard-trends"],
+    queryFn: async () => {
+      const res = await fetch(`${import.meta.env.BASE_URL}api/dashboard/trends`);
+      if (!res.ok) throw new Error("Failed to load trends");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
 
 export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
   const { data: funnel, isLoading: loadingFunnel } = useGetLeadFunnel();
   const { data: recentCalls, isLoading: loadingCalls } = useGetRecentCalls();
   const { data: followUps, isLoading: loadingFollowUps } = useGetTodayFollowUps();
+  const { data: trends, isLoading: loadingTrends } = useDashboardTrends();
   
   const queryClient = useQueryClient();
 
@@ -189,6 +214,63 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5" />
+            Activity — Last 14 Days
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loadingTrends ? (
+            <Skeleton className="h-52 w-full" />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={trends} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  tickFormatter={(v: string) => v.slice(5)}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  width={28}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--popover))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    fontSize: 12,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line
+                  type="monotone"
+                  dataKey="calls"
+                  stroke="#6366f1"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Calls"
+                  activeDot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="leads"
+                  stroke="#10b981"
+                  strokeWidth={2}
+                  dot={false}
+                  name="New Leads"
+                  activeDot={{ r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

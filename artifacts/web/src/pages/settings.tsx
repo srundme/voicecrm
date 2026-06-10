@@ -1,6 +1,7 @@
 import {
   useGetApiConfig, useUpdateApiConfig, useTestConnection, getGetApiConfigQueryKey,
   useListAutomations, useCreateAutomation, useUpdateAutomation, getListAutomationsQueryKey,
+  useListAgents,
   AutomationType,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -11,7 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap } from "lucide-react";
+import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap, Bot } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 
 type Service = "bolna" | "brevo" | "meta";
@@ -37,6 +39,7 @@ export default function Settings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const { data: agentsData } = useListAgents();
   const { data: automationsData } = useListAutomations();
   const createAutomation = useCreateAutomation();
   const updateAutomation = useUpdateAutomation();
@@ -77,7 +80,11 @@ export default function Settings() {
           });
         }
       }
+      await updateConfig.mutateAsync({
+        data: { monthly_checkin_agent_id: formData.monthly_checkin_agent_id || undefined },
+      });
       queryClient.invalidateQueries({ queryKey: getListAutomationsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetApiConfigQueryKey() });
       toast({ title: "Automation rules saved" });
     } catch {
       toast({ variant: "destructive", title: "Failed to save automation rules" });
@@ -94,6 +101,7 @@ export default function Settings() {
     meta_ads_access_token: "",
     sms_on_lead_created: false,
     sms_on_call_scheduled: false,
+    monthly_checkin_agent_id: "",
   });
 
   useEffect(() => {
@@ -104,6 +112,7 @@ export default function Settings() {
         meta_ads_access_token: config.meta_ads_access_token || "",
         sms_on_lead_created: config.sms_on_lead_created || false,
         sms_on_call_scheduled: config.sms_on_call_scheduled || false,
+        monthly_checkin_agent_id: config.monthly_checkin_agent_id || "",
       });
     }
   }, [config]);
@@ -275,6 +284,27 @@ export default function Settings() {
                 </div>
               );
             })}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-purple-600" />
+                <Label className="text-sm font-medium">Monthly check-in agent</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">The AI agent used for monthly check-in calls to existing policyholders.</p>
+              <Select
+                value={formData.monthly_checkin_agent_id || "__none__"}
+                onValueChange={(v) => setFormData(f => ({ ...f, monthly_checkin_agent_id: v === "__none__" ? "" : v }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select an agent..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No agent selected</SelectItem>
+                  {agentsData?.data?.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardContent>
           <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
             <Button onClick={handleSaveRules} disabled={savingRules}>

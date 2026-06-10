@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
 import { formatDateTime } from "@/lib/format";
-import { Plus, Loader2, Trash2, PhoneCall, CheckCircle2, CalendarDays, List as ListIcon, ChevronLeft, ChevronRight, CalendarClock } from "lucide-react";
+import { Plus, Loader2, Trash2, PhoneCall, CheckCircle2, CalendarDays, List as ListIcon, ChevronLeft, ChevronRight, CalendarClock, CalendarSearch } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -56,6 +56,7 @@ export default function FollowUps() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [reschedule, setReschedule] = useState<{ id: string; at: string } | null>(null);
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
@@ -104,6 +105,17 @@ export default function FollowUps() {
       {
         onSuccess: () => { invalidate(); setOpen(false); setForm({ ...form, lead_id: "", scheduled_at: "", bolna_agent_id: "", notes: "" }); toast({ title: "Follow-up scheduled" }); },
         onError: (err: any) => toast({ variant: "destructive", title: "Failed", description: err.message }),
+      }
+    );
+  };
+
+  const handleReschedule = () => {
+    if (!reschedule?.at) return;
+    updateFollowUp.mutate(
+      { id: reschedule.id, data: { scheduled_at: new Date(reschedule.at), status: FollowUpStatus.PENDING } },
+      {
+        onSuccess: () => { invalidate(); setReschedule(null); toast({ title: "Follow-up rescheduled" }); },
+        onError: (err: any) => toast({ variant: "destructive", title: "Failed to reschedule", description: err.message }),
       }
     );
   };
@@ -265,9 +277,14 @@ export default function FollowUps() {
                             <PhoneCall className="w-4 h-4 text-primary" />
                           </Button>
                           {f.status !== "COMPLETED" && (
-                            <Button variant="ghost" size="icon" onClick={() => handleComplete(f.id)} title="Mark complete">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            </Button>
+                            <>
+                              <Button variant="ghost" size="icon" onClick={() => setReschedule({ id: f.id, at: "" })} title="Reschedule">
+                                <CalendarSearch className="w-4 h-4 text-amber-600" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleComplete(f.id)} title="Mark complete">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              </Button>
+                            </>
                           )}
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(f.id)} title="Delete">
                             <Trash2 className="w-4 h-4 text-destructive" />
@@ -282,6 +299,31 @@ export default function FollowUps() {
           </div>
         </Card>
       )}
+
+      <Dialog open={!!reschedule} onOpenChange={(v) => !v && setReschedule(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reschedule Follow-up</DialogTitle>
+            <DialogDescription>Pick a new date and time. Status will be reset to Pending.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>New Date & Time</Label>
+              <Input
+                type="datetime-local"
+                value={reschedule?.at ?? ""}
+                onChange={(e) => setReschedule(r => r ? { ...r, at: e.target.value } : r)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReschedule(null)}>Cancel</Button>
+            <Button onClick={handleReschedule} disabled={updateFollowUp.isPending || !reschedule?.at}>
+              {updateFollowUp.isPending ? "Saving..." : "Reschedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

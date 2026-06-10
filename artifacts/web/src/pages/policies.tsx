@@ -1,4 +1,4 @@
-import { useListPolicies, useCreatePolicy, useDeletePolicy, getListPoliciesQueryKey, InsuranceType, PolicyStatus, PremiumFreq } from "@workspace/api-client-react";
+import { useListPolicies, useCreatePolicy, useDeletePolicy, useCreateFollowUp, getListPoliciesQueryKey, getListFollowUpsQueryKey, InsuranceType, PolicyStatus, PremiumFreq } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { Plus, Loader2, Trash2 } from "lucide-react";
+import { Plus, Loader2, Trash2, AlertTriangle, Clock, CalendarCheck } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -21,13 +21,21 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   CLAIMED: "secondary",
 };
 
+function daysUntil(dateStr?: string | null): number | null {
+  if (!dateStr) return null;
+  const diff = new Date(dateStr).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
 export default function Policies() {
   const { data, isLoading } = useListPolicies();
   const createPolicy = useCreatePolicy();
   const deletePolicy = useDeletePolicy();
+  const createFollowUp = useCreateFollowUp();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"all" | "renewals">("all");
   const [form, setForm] = useState({
     lead_id: "",
     policy_number: "",
@@ -41,6 +49,20 @@ export default function Policies() {
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListPoliciesQueryKey() });
+
+  const renewals = useMemo(() => {
+    if (!data) return [];
+    return data
+      .filter((p) => {
+        const d = daysUntil(p.renewal_date);
+        return d !== null && d >= 0 && d <= 30;
+      })
+      .sort((a, b) => {
+        const da = daysUntil(a.renewal_date) ?? 999;
+        const db2 = daysUntil(b.renewal_date) ?? 999;
+        return da - db2;
+      });
+  }, [data]);
 
   const handleCreate = () => {
     if (!form.lead_id.trim()) {
@@ -81,6 +103,30 @@ export default function Policies() {
     });
   };
 
+  const handleCreateReminder = (p: typeof data extends (infer T)[] | undefined ? T : never) => {
+    if (!p) return;
+    const scheduledAt = new Date();
+    scheduledAt.setDate(scheduledAt.getDate() + 1);
+    scheduledAt.setHours(10, 0, 0, 0);
+    createFollowUp.mutate(
+      {
+        data: {
+          lead_id: p.lead_id,
+          type: "RENEWAL_REMINDER",
+          scheduled_at: scheduledAt.toISOString(),
+          notes: `Policy renewal due: ${p.policy_number || p.policy_type}${p.renewal_date ? ` on ${formatDate(p.renewal_date)}` : ""}`,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListFollowUpsQueryKey() });
+          toast({ title: "Renewal reminder created", description: "Scheduled for tomorrow at 10 AM." });
+        },
+        onError: (err: any) => toast({ variant: "destructive", title: "Failed to create reminder", description: err.message }),
+      }
+    );
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto flex flex-col h-[calc(100vh-2rem)]">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -94,50 +140,131 @@ export default function Policies() {
         </Button>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto">
-          <Table>
-            <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
-              <TableRow>
-                <TableHead>Policy No.</TableHead>
-                <TableHead>Lead</TableHead>
-                <TableHead>Insurer</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Sum Assured</TableHead>
-                <TableHead>Premium</TableHead>
-                <TableHead>Renewal</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-              ) : !data || data.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No policies yet.</TableCell></TableRow>
-              ) : (
-                data.map((p) => (
-                  <TableRow key={p.id} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{p.policy_number || "-"}</TableCell>
-                    <TableCell>{p.lead_name || "-"}</TableCell>
-                    <TableCell>{p.insurer_name || "-"}</TableCell>
-                    <TableCell><Badge variant="secondary" className="capitalize">{p.policy_type.toLowerCase()}</Badge></TableCell>
-                    <TableCell>{formatCurrency(p.sum_assured)}</TableCell>
-                    <TableCell>{formatCurrency(p.annual_premium)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{p.renewal_date ? formatDate(p.renewal_date) : "-"}</TableCell>
-                    <TableCell><Badge variant={STATUS_VARIANT[p.status] || "secondary"}>{p.status}</Badge></TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)} title="Delete">
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </TableCell>
+      <div className="flex items-center gap-1 border-b">
+        <button
+          onClick={() => setTab("all")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === "all" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        >
+          All Policies
+        </button>
+        <button
+          onClick={() => setTab("renewals")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${tab === "renewals" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+        >
+          Renewals Due
+          {renewals.length > 0 && (
+            <Badge variant={renewals.some(p => (daysUntil(p.renewal_date) ?? 99) < 7) ? "destructive" : "secondary"} className="text-xs px-1.5 py-0">
+              {renewals.length}
+            </Badge>
+          )}
+        </button>
+      </div>
+
+      {tab === "all" ? (
+        <Card className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
+                <TableRow>
+                  <TableHead>Policy No.</TableHead>
+                  <TableHead>Lead</TableHead>
+                  <TableHead>Insurer</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Sum Assured</TableHead>
+                  <TableHead>Premium</TableHead>
+                  <TableHead>Renewal</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={9} className="h-32 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                ) : !data || data.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="h-32 text-center text-muted-foreground">No policies yet.</TableCell></TableRow>
+                ) : (
+                  data.map((p) => (
+                    <TableRow key={p.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{p.policy_number || "-"}</TableCell>
+                      <TableCell>{p.lead_name || "-"}</TableCell>
+                      <TableCell>{p.insurer_name || "-"}</TableCell>
+                      <TableCell><Badge variant="secondary" className="capitalize">{p.policy_type.toLowerCase()}</Badge></TableCell>
+                      <TableCell>{formatCurrency(p.sum_assured)}</TableCell>
+                      <TableCell>{formatCurrency(p.annual_premium)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{p.renewal_date ? formatDate(p.renewal_date) : "-"}</TableCell>
+                      <TableCell><Badge variant={STATUS_VARIANT[p.status] || "secondary"}>{p.status}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)} title="Delete">
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      ) : (
+        <Card className="flex-1 flex flex-col overflow-hidden">
+          {renewals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+              <CalendarCheck className="w-12 h-12 text-muted/50" />
+              <p>No policies renewing in the next 30 days.</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto">
+              <Table>
+                <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
+                  <TableRow>
+                    <TableHead>Lead</TableHead>
+                    <TableHead>Policy No.</TableHead>
+                    <TableHead>Insurer</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Sum Assured</TableHead>
+                    <TableHead>Renewal Date</TableHead>
+                    <TableHead>Days Left</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {renewals.map((p) => {
+                    const days = daysUntil(p.renewal_date);
+                    const urgent = days !== null && days < 7;
+                    return (
+                      <TableRow key={p.id} className="hover:bg-muted/50">
+                        <TableCell className="font-medium">{p.lead_name || "-"}</TableCell>
+                        <TableCell>{p.policy_number || "-"}</TableCell>
+                        <TableCell>{p.insurer_name || "-"}</TableCell>
+                        <TableCell><Badge variant="secondary" className="capitalize">{p.policy_type.toLowerCase()}</Badge></TableCell>
+                        <TableCell>{formatCurrency(p.sum_assured)}</TableCell>
+                        <TableCell className="text-sm">{p.renewal_date ? formatDate(p.renewal_date) : "-"}</TableCell>
+                        <TableCell>
+                          <div className={`flex items-center gap-1.5 text-sm font-medium ${urgent ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+                            {urgent ? <AlertTriangle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                            {days === 0 ? "Today" : days === 1 ? "Tomorrow" : `${days} days`}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCreateReminder(p)}
+                            disabled={createFollowUp.isPending}
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-1" />
+                            Create Reminder
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </Card>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">

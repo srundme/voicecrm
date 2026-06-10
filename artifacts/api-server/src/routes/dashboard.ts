@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte, lte, inArray, count } from "drizzle-orm";
+import { and, desc, eq, gte, lte, inArray, count, sql } from "drizzle-orm";
 import { db, leadsTable, callLogsTable, followUpsTable } from "@workspace/db";
 import {
   GetDashboardSummaryResponse,
@@ -119,6 +119,42 @@ router.get("/dashboard/today-followups", async (_req, res): Promise<void> => {
     )
     .orderBy(followUpsTable.scheduled_at);
   res.json(GetTodayFollowUpsResponse.parse(await attachLeadNames(rows)));
+});
+
+router.get("/dashboard/trends", async (_req, res): Promise<void> => {
+  const since = new Date();
+  since.setDate(since.getDate() - 13);
+  since.setHours(0, 0, 0, 0);
+
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (13 - i));
+    return d.toISOString().slice(0, 10);
+  });
+
+  const [callRows, leadRows] = await Promise.all([
+    db
+      .select({
+        day: sql<string>`to_char(${callLogsTable.started_at}, 'YYYY-MM-DD')`,
+        c: count(),
+      })
+      .from(callLogsTable)
+      .where(and(eq(callLogsTable.org_id, DEFAULT_ORG_ID), gte(callLogsTable.started_at, since)))
+      .groupBy(sql`to_char(${callLogsTable.started_at}, 'YYYY-MM-DD')`),
+    db
+      .select({
+        day: sql<string>`to_char(${leadsTable.created_at}, 'YYYY-MM-DD')`,
+        c: count(),
+      })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), gte(leadsTable.created_at, since)))
+      .groupBy(sql`to_char(${leadsTable.created_at}, 'YYYY-MM-DD')`),
+  ]);
+
+  const callMap = new Map(callRows.map((r) => [r.day, r.c]));
+  const leadMap = new Map(leadRows.map((r) => [r.day, r.c]));
+
+  res.json(days.map((day) => ({ date: day, calls: Number(callMap.get(day) ?? 0), leads: Number(leadMap.get(day) ?? 0) })));
 });
 
 export default router;

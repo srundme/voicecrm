@@ -143,12 +143,25 @@ export function startPolling(callLogId: string, executionId: string): void {
     if (exec.ended || polls >= MAX_POLLS) {
       activePolls.delete(callLogId);
       if (updated && dropDetected) await maybeRetryOnDrop(updated);
+      if (updated && !dropDetected && updated.status === "COMPLETED") await maybeAdvanceLeadStage(updated);
       return;
     }
     setTimeout(tick, POLL_INTERVAL_MS);
   };
 
   setTimeout(tick, POLL_INTERVAL_MS);
+}
+
+async function maybeAdvanceLeadStage(call: CallLogRow): Promise<void> {
+  if (!call.lead_id) return;
+  try {
+    await db
+      .update(leadsTable)
+      .set({ stage: "CONTACTED" })
+      .where(and(eq(leadsTable.id, call.lead_id), eq(leadsTable.stage, "NEW")));
+  } catch (err) {
+    logger.error({ err }, "advance-lead-stage failed");
+  }
 }
 
 async function maybeRetryOnDrop(call: CallLogRow): Promise<void> {
