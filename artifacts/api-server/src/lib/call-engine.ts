@@ -166,8 +166,9 @@ async function maybeRetryOnDrop(call: CallLogRow): Promise<void> {
       );
     if (autos.length === 0 || call.retry_of_call_id) return;
     const auto = autos[0]!;
+    // Retry with the same agent that placed the original call — no per-rule agent selection.
     const outcome = await triggerCall({
-      agentId: auto.bolna_agent_id,
+      agentId: call.bolna_agent_id,
       phone: call.phone_number,
       leadId: call.lead_id,
       agentName: call.agent_name,

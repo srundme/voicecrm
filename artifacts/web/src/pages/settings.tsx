@@ -1,7 +1,7 @@
 import {
   useGetApiConfig, useUpdateApiConfig, useTestConnection, getGetApiConfigQueryKey,
   useListAutomations, useCreateAutomation, useUpdateAutomation, getListAutomationsQueryKey,
-  useListAgents, AutomationType,
+  AutomationType,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -39,14 +38,13 @@ export default function Settings() {
   const queryClient = useQueryClient();
 
   const { data: automationsData } = useListAutomations();
-  const { data: agentsData } = useListAgents();
   const createAutomation = useCreateAutomation();
   const updateAutomation = useUpdateAutomation();
 
-  type RuleState = { id?: string; is_active: boolean; bolna_agent_id: string };
+  type RuleState = { id?: string; is_active: boolean };
   const [rules, setRules] = useState<Record<string, RuleState>>({
-    AUTO_CALL_ON_LEAD: { is_active: false, bolna_agent_id: "" },
-    RETRY_ON_DROP: { is_active: false, bolna_agent_id: "" },
+    AUTO_CALL_ON_LEAD: { is_active: false },
+    RETRY_ON_DROP: { is_active: false },
   });
   const [savingRules, setSavingRules] = useState(false);
 
@@ -56,7 +54,7 @@ export default function Settings() {
       const next = { ...prev };
       for (const a of automationsData) {
         if (a.type === "AUTO_CALL_ON_LEAD" || a.type === "RETRY_ON_DROP") {
-          next[a.type] = { id: a.id, is_active: a.is_active, bolna_agent_id: a.bolna_agent_id };
+          next[a.type] = { id: a.id, is_active: a.is_active };
         }
       }
       return next;
@@ -72,13 +70,10 @@ export default function Settings() {
       };
       for (const [type, rule] of Object.entries(rules)) {
         if (rule.id) {
-          await updateAutomation.mutateAsync({
-            id: rule.id,
-            data: { is_active: rule.is_active, bolna_agent_id: rule.bolna_agent_id || undefined },
-          });
-        } else if (rule.bolna_agent_id) {
+          await updateAutomation.mutateAsync({ id: rule.id, data: { is_active: rule.is_active } });
+        } else {
           await createAutomation.mutateAsync({
-            data: { name: NAMES[type] || type, type: type as AutomationType, bolna_agent_id: rule.bolna_agent_id, is_active: rule.is_active },
+            data: { name: NAMES[type] || type, type: type as AutomationType, bolna_agent_id: "", is_active: rule.is_active },
           });
         }
       }
@@ -264,33 +259,19 @@ export default function Settings() {
           <CardContent className="space-y-5">
             {[
               { type: "AUTO_CALL_ON_LEAD", label: "Auto-call new leads", desc: "When a lead is added or arrives via webhook, an AI agent calls them immediately." },
-              { type: "RETRY_ON_DROP", label: "Retry dropped calls", desc: "When a call drops unexpectedly, an AI agent retries automatically." },
+              { type: "RETRY_ON_DROP", label: "Retry dropped calls", desc: "When a call drops unexpectedly, the same agent retries automatically." },
             ].map(({ type, label, desc }) => {
               const rule = rules[type];
-              const agents = agentsData?.data || [];
               return (
-                <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-lg border p-4">
+                <div key={type} className="flex items-center justify-between gap-4 rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{label}</Label>
+                    <p className="text-sm text-muted-foreground">{desc}</p>
+                  </div>
                   <Switch
                     checked={rule.is_active}
                     onCheckedChange={(v) => setRules(r => ({ ...r, [type]: { ...r[type], is_active: v } }))}
                   />
-                  <div className="flex-1 min-w-0 space-y-0.5">
-                    <Label className="text-sm font-medium">{label}</Label>
-                    <p className="text-sm text-muted-foreground">{desc}</p>
-                  </div>
-                  <Select
-                    value={rule.bolna_agent_id}
-                    onValueChange={(v) => setRules(r => ({ ...r, [type]: { ...r[type], bolna_agent_id: v } }))}
-                  >
-                    <SelectTrigger className="w-48 shrink-0">
-                      <SelectValue placeholder={agents.length ? "Pick agent" : "No agents yet"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {agents.map(a => (
-                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               );
             })}

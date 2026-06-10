@@ -38,6 +38,7 @@ import {
 import { DEFAULT_ORG_ID } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
 import { triggerCall } from "../lib/call-engine";
+import { bolna } from "../lib/bolna";
 import { serializeCallLogs } from "../lib/serialize";
 import { notifyLeadCreated } from "../lib/brevo";
 import { logger } from "../lib/logger";
@@ -64,8 +65,12 @@ async function autoCallOnLead(leadId: string, phone: string): Promise<void> {
       );
     if (autos.length === 0) return;
     const auto = autos[0]!;
+    // Pick the first available Bolna agent automatically — no per-rule agent selection needed.
+    const agentsResult = await bolna.listAgents();
+    if (!agentsResult.success || agentsResult.data.length === 0) return;
+    const agentId = agentsResult.data[0]!.id;
     await triggerCall({
-      agentId: auto.bolna_agent_id,
+      agentId,
       phone,
       leadId,
       callType: "new_lead",
