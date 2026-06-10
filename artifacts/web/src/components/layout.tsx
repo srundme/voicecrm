@@ -20,7 +20,6 @@ import {
   Settings,
   Bot,
   Link as LinkIcon,
-  Tag,
   Users2,
 } from "lucide-react";
 
@@ -35,7 +34,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
     { label: "Follow-ups", href: "/follow-ups", icon: CalendarDays },
     { label: "AI Agents", href: "/agents", icon: Bot },
     { label: "Lead Sources", href: "/lead-sources", icon: LinkIcon },
-    { label: "Dispositions", href: "/dispositions", icon: Tag },
     { label: "Team", href: "/team", icon: Users2 },
     { label: "Settings", href: "/settings", icon: Settings },
   ];

@@ -14,7 +14,6 @@ import Policies from "@/pages/policies";
 import FollowUps from "@/pages/follow-ups";
 import Agents from "@/pages/agents";
 import LeadSources from "@/pages/lead-sources";
-import Dispositions from "@/pages/dispositions";
 import Settings from "@/pages/settings";
 import Team from "@/pages/team";
 
@@ -33,7 +32,6 @@ function Router() {
         <Route path="/follow-ups" component={FollowUps} />
         <Route path="/agents" component={Agents} />
         <Route path="/lead-sources" component={LeadSources} />
-        <Route path="/dispositions" component={Dispositions} />
         <Route path="/settings" component={Settings} />
         <Route path="/team" component={Team} />
         <Route component={NotFound} />
