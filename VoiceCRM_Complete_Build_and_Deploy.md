@@ -2,6 +2,17 @@
 ### For AI Coding Assistants + Railway Deployment
 
 > Paste this entire document as your first prompt to any AI coding assistant (Cursor, Windsurf, Lovable, v0, etc.). It contains everything needed to rebuild and deploy an exact replica of VoiceCRM on Railway.
+>
+> **This is a living document.** Every time a new feature is added or existing logic changes, this file is updated to match. Always use this as the single source of truth.
+
+---
+
+## Changelog
+
+| Date | Change |
+|---|---|
+| 2026-06-10 | Initial full spec — schema, routes, webhooks, scheduler, frontend |
+| 2026-06-10 | Added auto-callback scheduling from call transcript (Hindi + English NLP) |
 
 ---
 
@@ -12,6 +23,7 @@ A **SaaS CRM portal for Indian insurance agencies** with:
 - Lead management with pipeline stages
 - Policy tracking + renewal reminders
 - Automated follow-ups with a background scheduler
+- **Auto-callback scheduling** — detects callback requests in Hindi/English during calls and auto-schedules the follow-up
 - Meta Ads + website form webhook integrations
 - Real-time call feed via Server-Sent Events
 - SMS + email via Brevo
@@ -1583,6 +1595,245 @@ LOG_LEVEL=info
 
 ---
 
+## Feature: Auto-Callback Scheduling from Call Transcript
+
+### How it works
+
+After every completed call, VoiceCRM reads the **transcript + summary** returned by Bolna and checks for callback requests in Hindi and English. If detected, it automatically creates a `CALLBACK_REQUESTED` follow-up in the database. The background scheduler (runs every 60 seconds) then dials the lead at the scheduled time using the same Bolna agent.
+
+This works for calls triggered from VoiceCRM **and** calls made directly from the Bolna dashboard.
+
+### Callback time resolution table
+
+| Customer says | Scheduled at |
+|---|---|
+| *"do minute baad call karo"* | 2 minutes after call ends |
+| *"5 minute baad"* | 5 minutes after call ends |
+| *"ek ghante baad"* | 1 hour after call ends |
+| *"kal do baje ke baad"* | Tomorrow 2 PM IST |
+| *"kal subah"* | Tomorrow 9 AM IST |
+| *"kal shaam"* | Tomorrow 5 PM IST |
+| *"kal dopahar"* | Tomorrow 2 PM IST |
+| *"kal raat"* | Tomorrow 8 PM IST |
+| *"parso teen baje"* | Day after tomorrow 3 PM IST |
+| *"call karo"* (no time) | 2 hours from now (default) |
+| *"kal"* (no time) | Tomorrow 10 AM IST (default) |
+
+### Callback detection signals (any of these trigger parsing)
+
+```
+"call back", "callback", "call kar", "call karo", "call karen", "call kijiye",
+"call karna", "wapas call", "phir call", "baad mein call", "baad call",
+"bad mein call", "call karti hoon", "call karta hoon", "call karenge",
+"call later", "call again"
+```
+
+### Implementation — add to `artifacts/api-server/src/lib/call-engine.ts`
+
+Add this entire block at the **top of the file**, after imports:
+
+```typescript
+// ── Callback intent parser ────────────────────────────────────────────────────
+
+const HINDI_NUMS: Record<string, number> = {
+  ek: 1, do: 2, teen: 3, char: 4, paanch: 5, chhe: 6, chhah: 6,
+  saat: 7, aath: 8, nau: 9, das: 10, gyarah: 11, barah: 12,
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+
+function toNum(s: string): number {
+  return HINDI_NUMS[s.toLowerCase()] ?? Number(s);
+}
+
+const HINDI_NUM_PAT = Object.keys(HINDI_NUMS).join("|");
+const NUM_PAT = `(\\d+|${HINDI_NUM_PAT})`;
+
+/** Returns the IST wall-clock Date for a given hour/minute on a given UTC Date */
+function istDateTime(base: Date, hour: number, minute = 0): Date {
+  const d = new Date(base);
+  d.setUTCHours(hour - 5, minute - 30, 0, 0); // IST = UTC+5:30
+  return d;
+}
+
+/**
+ * Parse a callback time hint out of call transcript + summary text.
+ * Returns { scheduledAt, notes } if a callback was requested, or null otherwise.
+ * All times are anchored to IST.
+ */
+export function parseCallbackIntent(
+  text: string,
+  callEndedAt: Date = new Date(),
+): { scheduledAt: Date; notes: string } | null {
+  if (!text || text.trim().length < 5) return null;
+
+  const lower = text.toLowerCase();
+
+  const callbackSignals = [
+    "call back", "callback", "call kar", "call karo", "call karen", "call kijiye",
+    "call karna", "wapas call", "phir call", "baad mein call", "baad call",
+    "bad mein call", "call karti hoon", "call karta hoon", "call karenge",
+    "call later", "call again",
+  ];
+  if (!callbackSignals.some((s) => lower.includes(s))) return null;
+
+  // ── Relative: "X minute(s) baad" ─────────────────────────────────────────
+  const minRx = new RegExp(
+    `${NUM_PAT}\\s*(?:minute|minutes|min|mins)\\s*(?:baad|bad|ke baad|after|later)`,
+    "i",
+  );
+  const minMatch = lower.match(minRx);
+  if (minMatch) {
+    const n = toNum(minMatch[1]!);
+    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 1000);
+    return { scheduledAt, notes: `Customer requested callback in ${n} minute(s)` };
+  }
+
+  // ── Relative: "X ghante/hour(s) baad" ────────────────────────────────────
+  const hrRx = new RegExp(
+    `${NUM_PAT}\\s*(?:ghante|ghanta|hour|hours|hr|hrs)\\s*(?:baad|bad|ke baad|after|later)`,
+    "i",
+  );
+  const hrMatch = lower.match(hrRx);
+  if (hrMatch) {
+    const n = toNum(hrMatch[1]!);
+    const scheduledAt = new Date(callEndedAt.getTime() + n * 60 * 60 * 1000);
+    return { scheduledAt, notes: `Customer requested callback in ${n} hour(s)` };
+  }
+
+  // ── Tomorrow / kal ────────────────────────────────────────────────────────
+  const isTomorrow = /\b(kal|tomorrow|agle din|next day)\b/.test(lower);
+  const isDayAfter = /\b(parso|परसों|day after tomorrow)\b/.test(lower);
+  const baseDay = new Date(callEndedAt);
+  if (isDayAfter) baseDay.setDate(baseDay.getDate() + 2);
+  else if (isTomorrow) baseDay.setDate(baseDay.getDate() + 1);
+
+  if (isTomorrow || isDayAfter) {
+    const digitTimeRx = /(\d{1,2})(?::(\d{2}))?\s*(?:baje|bajey|baj|am\b|pm\b)/i;
+    const dtm = lower.match(digitTimeRx);
+    if (dtm) {
+      let h = Number(dtm[1]);
+      const m = dtm[2] ? Number(dtm[2]) : 0;
+      if (/pm/i.test(dtm[0]) && h < 12) h += 12;
+      if (/am/i.test(dtm[0]) && h === 12) h = 0;
+      if (h <= 7 && !/am/i.test(dtm[0])) h += 12;
+      return {
+        scheduledAt: istDateTime(baseDay, h, m),
+        notes: `Customer requested callback ${isTomorrow ? "tomorrow" : "day after tomorrow"} at ${h}:${String(m).padStart(2, "0")}`,
+      };
+    }
+
+    const hindiTimeRx = new RegExp(`(${HINDI_NUM_PAT})\\s*(?:baje|bajey|baj|ke baad)`, "i");
+    const htm = lower.match(hindiTimeRx);
+    if (htm) {
+      let h = toNum(htm[1]!);
+      if (h <= 7) h += 12;
+      return {
+        scheduledAt: istDateTime(baseDay, h),
+        notes: `Customer requested callback ${isTomorrow ? "tomorrow" : "day after"} at ${h}:00`,
+      };
+    }
+
+    if (/\b(subah|morning|sawere)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 9), notes: "Customer requested callback tomorrow morning" };
+    if (/\b(shaam|evening|sham)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 17), notes: "Customer requested callback tomorrow evening" };
+    if (/\b(dopahar|afternoon|duphar)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 14), notes: "Customer requested callback tomorrow afternoon" };
+    if (/\b(raat|night)\b/.test(lower))
+      return { scheduledAt: istDateTime(baseDay, 20), notes: "Customer requested callback tomorrow night" };
+
+    return { scheduledAt: istDateTime(baseDay, 10), notes: "Customer requested callback tomorrow (defaulted to 10 AM)" };
+  }
+
+  // ── Generic callback with no time → 2 hours from now ─────────────────────
+  return {
+    scheduledAt: new Date(callEndedAt.getTime() + 2 * 60 * 60 * 1000),
+    notes: "Customer requested a callback (time unspecified, defaulted to 2 hours)",
+  };
+}
+
+export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
+  if (!call.lead_id) return;
+  try {
+    const text = [call.transcript ?? "", call.summary ?? ""].join(" ");
+    const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
+    if (!intent) return;
+
+    await db.insert(followUpsTable).values({
+      org_id: call.org_id,
+      lead_id: call.lead_id,
+      type: "CALLBACK_REQUESTED",
+      scheduled_at: intent.scheduledAt,
+      bolna_agent_id: call.bolna_agent_id,
+      call_log_id: call.id,
+      notes: intent.notes,
+      status: "PENDING",
+    });
+
+    await db
+      .update(leadsTable)
+      .set({ next_followup_at: intent.scheduledAt })
+      .where(eq(leadsTable.id, call.lead_id));
+
+    logger.info(
+      { callId: call.id, leadId: call.lead_id, scheduledAt: intent.scheduledAt },
+      "auto-scheduled callback follow-up from call transcript",
+    );
+  } catch (err) {
+    logger.error({ err, callId: call.id }, "maybeScheduleCallback failed");
+  }
+}
+```
+
+### Wire-up — two places to call `maybeScheduleCallback`
+
+**1. In `startPolling` — after `maybeAdvanceLeadStage`** (calls triggered from VoiceCRM):
+
+```typescript
+if (exec.ended || polls >= MAX_POLLS) {
+  activePolls.delete(callLogId);
+  if (updated && dropDetected) await maybeRetryOnDrop(updated);
+  if (updated && !dropDetected && updated.status === "COMPLETED") {
+    await maybeAdvanceLeadStage(updated);
+    await maybeScheduleCallback(updated);   // ← add this line
+  }
+  return;
+}
+```
+
+**2. In `routes/misc.ts` Bolna webhook handler** (calls made directly from Bolna):
+
+```typescript
+// Add to imports at top
+import { triggerCall, startPolling, maybeScheduleCallback } from "../lib/call-engine";
+
+// In the bolna webhook handler, after the update block:
+if (updated && !exec.data.ended) {
+  startPolling(updated.id, executionId);
+}
+if (updated && exec.data.ended && !dropDetected && status === "COMPLETED") {
+  void maybeScheduleCallback(updated);   // ← add this block
+}
+```
+
+### DB impact
+
+`maybeScheduleCallback` inserts one row into `follow_ups` with:
+
+| Column | Value |
+|---|---|
+| `type` | `CALLBACK_REQUESTED` |
+| `status` | `PENDING` |
+| `scheduled_at` | Parsed from transcript |
+| `bolna_agent_id` | Same agent that made the original call |
+| `call_log_id` | Source call log UUID |
+| `notes` | Human-readable description of what was parsed |
+
+The scheduler picks it up automatically on the next 60-second tick and dials the lead.
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -1593,4 +1844,6 @@ LOG_LEVEL=info
 | Meta webhook fails verification | Check `APP_BASE_URL` is set and the verify token matches `webhook_secret` in DB |
 | Bolna calls not appearing | Ensure Bolna webhook URL is set in Bolna agent settings |
 | Auto-call not firing | Check Bolna API key is set in Settings and account has call credits |
+| Callback not auto-scheduled | Check Bolna is sending transcript/summary in the webhook payload; verify the callback phrase appears in `callbackSignals` list |
+| Callback scheduled but not dialed | Check scheduler is running (server logs show "Background scheduler started"); verify `bolna_agent_id` is set on the follow-up row |
 | `pnpm: not found` | Add `pnpm` to Railway's build environment or use `npm install -g pnpm` in build command |
