@@ -27,9 +27,16 @@ router.put("/settings/api-config", async (req, res): Promise<void> => {
     return;
   }
   await ensureApiConfig();
+  const SENTINEL = "configured";
+  const updates: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(parsed.data)) {
+    if (v !== SENTINEL && v !== "") {
+      updates[k] = v;
+    }
+  }
   const [row] = await db
     .update(apiConfigTable)
-    .set({ ...parsed.data })
+    .set(updates)
     .where(eq(apiConfigTable.org_id, DEFAULT_ORG_ID))
     .returning();
   res.json(GetApiConfigResponse.parse(serializeApiConfig(row!)));
