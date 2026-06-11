@@ -1,9 +1,11 @@
+import { useState, useEffect } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/layout";
 import NotFound from "@/pages/not-found";
+import Login from "@/pages/login";
 
 import Dashboard from "@/pages/dashboard";
 import Leads from "@/pages/leads";
@@ -18,9 +20,20 @@ import Settings from "@/pages/settings";
 import Team from "@/pages/team";
 import Campaigns from "@/pages/campaigns";
 
-const queryClient = new QueryClient();
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-function Router() {
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: unknown) => {
+        if ((error as { status?: number })?.status === 401) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
+
+function AppRouter() {
   return (
     <AppLayout>
       <Switch>
@@ -42,13 +55,49 @@ function Router() {
   );
 }
 
+type AuthState = "loading" | "authenticated" | "unauthenticated";
+
+function AuthGate() {
+  const [authState, setAuthState] = useState<AuthState>("loading");
+
+  const checkAuth = async () => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/me`, { credentials: "include" });
+      const data = (await res.json()) as { authenticated?: boolean };
+      setAuthState(data.authenticated ? "authenticated" : "unauthenticated");
+    } catch {
+      setAuthState("unauthenticated");
+    }
+  };
+
+  useEffect(() => {
+    void checkAuth();
+  }, []);
+
+  if (authState === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-pulse text-muted-foreground text-sm">Loading…</div>
+      </div>
+    );
+  }
+
+  if (authState === "unauthenticated") {
+    return <Login onSuccess={() => { queryClient.clear(); setAuthState("authenticated"); }} />;
+  }
+
+  return (
+    <WouterRouter base={BASE}>
+      <AppRouter />
+    </WouterRouter>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
+        <AuthGate />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
