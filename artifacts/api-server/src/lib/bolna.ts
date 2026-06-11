@@ -145,13 +145,15 @@ export const bolna = {
     phone: string;
     variables?: Record<string, unknown>;
   }): Promise<BolnaResult<StartCallResult>> {
+    const payload = {
+      agent_id: opts.agentId,
+      recipient_phone_number: toE164India(opts.phone),
+      user_data: opts.variables ?? {},
+    };
+    logger.info({ bolna_call_payload: payload }, "Bolna startCall payload");
     const res = await request<Record<string, unknown>>("/call", {
       method: "POST",
-      body: JSON.stringify({
-        agent_id: opts.agentId,
-        recipient_phone_number: toE164India(opts.phone),
-        user_data: opts.variables ?? {},
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.success) return res;
     const execId =
