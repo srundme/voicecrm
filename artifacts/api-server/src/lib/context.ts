@@ -114,13 +114,20 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     lead_id: lead.id,
   };
 
+  const NEW_CALL_OPENING =
+    `Namaskaar, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. ` +
+    `Jo ki ek IRDAI Registered Insurance brocker hai — jaise ki aap car ke owner hain, ` +
+    `to aapne apni gaadi ka insurance bhi karaya hoga. ` +
+    `To kya aapne apni health ko bhi protect kiya hua hai health insurance se? ` +
+    `Kyonki health insurance mein Accidental cover day 1st se milta hai.`;
+
   // No prior call → fresh outbound prospect.
   if (!lastCall) {
     return {
       ...base,
       call_type: "new",
       context: "",
-      opening_line: "",
+      opening_line: NEW_CALL_OPENING,
       previous_execution_id: "",
     };
   }
@@ -135,7 +142,7 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
       ...base,
       call_type: "drop_retry",
       context: lastSummary,
-      opening_line: `${firstName(name)} ji, maafi chahta hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karta hoon jahan hamne baat chodi thi.`,
+      opening_line: `${firstName(name)} ji, maafi chahti hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karti hoon jahan hamne baat chodi thi.`,
       previous_execution_id: lastExecId,
       previous_summary: lastSummary,
     };
@@ -143,16 +150,15 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
 
   // A callback was explicitly requested and is now due.
   if (pendingCallback) {
-    const callbackOpening = `${firstName(name)} ji, aapne humse baad mein call karne ko kaha tha. Main wapas aa gaya hoon, kya abhi baat kar sakte hain?`;
+    const callbackOpening = `${firstName(name)} ji, aapne humse baad mein call karne ko kaha tha. Main wapas aa gayi hoon — kya abhi baat kar sakte hain?`;
     // Build callback_reason: include previous summary so agent has full context.
-    // The prompt skips {{ context }} for callbacks, so the summary MUST go here.
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
     if (lastSummary) reasonParts.push(`Previous call summary: ${lastSummary}`);
     return {
       ...base,
       call_type: "callback",
-      context: "",           // intentionally blank — prompt ignores context for callbacks
+      context: "",
       opening_line: callbackOpening,
       callback_opening: callbackOpening,
       callback_reason: reasonParts.join("\n\n"),
@@ -160,12 +166,15 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     };
   }
 
-  // Known contact with history (inbound or outbound-with-history).
+  // Known contact with history.
+  const first = firstName(name);
   return {
     ...base,
     call_type: "inbound_known",
     context: lastSummary,
-    opening_line: "",
+    opening_line: first
+      ? `Namaskaar ${first} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`
+      : `Namaskaar, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`,
     previous_execution_id: lastExecId,
     policy_number: policy?.policy_number ?? undefined,
     renewal_date: policy?.renewal_date
