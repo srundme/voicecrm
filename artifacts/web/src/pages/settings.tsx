@@ -104,6 +104,8 @@ export default function Settings() {
     monthly_checkin_agent_id: "",
   });
 
+  const SENTINEL = "configured";
+
   useEffect(() => {
     if (config) {
       setFormData({
@@ -118,8 +120,12 @@ export default function Settings() {
   }, [config]);
 
   const handleSave = () => {
+    const payload: Record<string, unknown> = { ...formData };
+    for (const k of ["bolna_api_key", "brevo_api_key", "meta_ads_access_token"] as const) {
+      if (payload[k] === SENTINEL || payload[k] === "") delete payload[k];
+    }
     updateConfig.mutate(
-      { data: formData },
+      { data: payload as Parameters<typeof updateConfig.mutate>[0]["data"] },
       {
         onSuccess: (data) => {
           queryClient.setQueryData(getGetApiConfigQueryKey(), data);
@@ -154,30 +160,36 @@ export default function Settings() {
     );
   }
 
-  const keyField = (id: Service, label: string, placeholder: string, field: keyof typeof formData) => (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Input
-            id={id}
-            type={reveal[id] ? "text" : "password"}
-            placeholder={placeholder}
-            value={formData[field] as string}
-            onChange={(e) => setFormData(f => ({ ...f, [field]: e.target.value }))}
-            className="pr-9"
-          />
-          <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full w-9" onClick={() => setReveal(r => ({ ...r, [id]: !r[id] }))} title={reveal[id] ? "Hide" : "Show"}>
-            {reveal[id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+  const keyField = (id: Service, label: string, placeholder: string, field: keyof typeof formData) => {
+    const currentValue = formData[field] as string;
+    const isSaved = currentValue === SENTINEL;
+    return (
+      <div className="space-y-2">
+        <Label htmlFor={id}>{label}</Label>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Input
+              id={id}
+              type={reveal[id] ? "text" : "password"}
+              placeholder={isSaved ? "Key saved — enter new value to replace" : placeholder}
+              value={isSaved ? "" : currentValue}
+              onChange={(e) => setFormData(f => ({ ...f, [field]: e.target.value }))}
+              className={`pr-9 ${isSaved ? "placeholder:text-emerald-600 placeholder:font-medium" : ""}`}
+            />
+            {!isSaved && (
+              <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full w-9" onClick={() => setReveal(r => ({ ...r, [id]: !r[id] }))} title={reveal[id] ? "Hide" : "Show"}>
+                {reveal[id] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            )}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => handleTest(id)} disabled={testing === id || !isSaved}>
+            {testing === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+            <span className="ml-1.5">Test</span>
           </Button>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => handleTest(id)} disabled={testing === id || !(formData[field] as string)}>
-          {testing === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
-          <span className="ml-1.5">Test</span>
-        </Button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const urlField = (label: string, value?: string | null) => (
     <div className="p-3 bg-muted rounded-md border space-y-1">
