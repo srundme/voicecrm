@@ -14,6 +14,7 @@ import { DEFAULT_ORG_ID } from "../lib/org";
 import { attachLeadNames } from "../lib/serialize";
 import { triggerCall } from "../lib/call-engine";
 import { notifyCallScheduled } from "../lib/brevo";
+import { buildCallbackVars } from "../lib/scheduler";
 
 function formatIst(date: Date): string {
   return date.toLocaleString("en-IN", {
@@ -145,13 +146,19 @@ router.post("/follow-ups/:id/call", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Lead not found" });
     return;
   }
-  // buildCallContext will detect the pending CALLBACK_REQUESTED follow-up and
-  // build callback_opening + callback_reason (with prior summary) automatically.
-  // We do not override variables here so the context is not accidentally clobbered.
+  // Always build callback vars explicitly — the follow-up may already be
+  // IN_PROGRESS (claimed by the scheduler) by the time the user hits "Call Now",
+  // so buildCallContext will return inbound_known (no PENDING follow-up found).
+  // Passing variables directly guarantees the correct callback opening fires.
+  const callbackVars =
+    followUp.type === "CALLBACK_REQUESTED"
+      ? buildCallbackVars(followUp.notes, lead.full_name)
+      : {};
   const outcome = await triggerCall({
     agentId: followUp.bolna_agent_id,
     phone: lead.phone,
     leadId: lead.id,
+    variables: callbackVars,
   });
   if (outcome.success && outcome.call_log_id) {
     await db
