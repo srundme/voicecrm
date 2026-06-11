@@ -21,7 +21,7 @@ const TICK_INTERVAL_MS = 60_000;
  * Passed as {{is_callback}}, {{callback_time}}, {{callback_opening}} template
  * variables so the agent's system prompt can open the call contextually.
  */
-function buildCallbackVars(
+export function buildCallbackVars(
   notes: string | null,
   leadName: string = "",
 ): Record<string, string> {
