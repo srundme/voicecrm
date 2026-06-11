@@ -114,12 +114,10 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     lead_id: lead.id,
   };
 
-  const NEW_CALL_OPENING =
-    `Namaskaar, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. ` +
-    `Jo ki ek IRDAI Registered Insurance brocker hai — jaise ki aap car ke owner hain, ` +
-    `to aapne apni gaadi ka insurance bhi karaya hoga. ` +
-    `To kya aapne apni health ko bhi protect kiya hua hai health insurance se? ` +
-    `Kyonki health insurance mein Accidental cover day 1st se milta hai.`;
+  const insuranceLabel = insuranceType || "insurance";
+  const NEW_CALL_OPENING = insuranceType
+    ? `Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
+    : `Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
 
   // No prior call → fresh outbound prospect.
   if (!lastCall) {
