@@ -50,10 +50,30 @@ export async function ensureApiConfig(): Promise<ApiConfigRow> {
   }
 }
 
+export const SECRET_SENTINEL = "configured";
+
+function maskKey(v: string | null | undefined): string | null {
+  return v ? SECRET_SENTINEL : null;
+}
+
 export function serializeApiConfig(row: ApiConfigRow) {
   const base = publicBaseUrl();
   return {
-    ...row,
+    id: row.id,
+    org_id: row.org_id,
+    bolna_api_key: maskKey(row.bolna_api_key),
+    bolna_base_url: row.bolna_base_url,
+    brevo_api_key: maskKey(row.brevo_api_key),
+    brevo_sender_name: row.brevo_sender_name,
+    meta_ads_access_token: maskKey(row.meta_ads_access_token),
+    meta_ads_account_id: row.meta_ads_account_id,
+    webhook_secret: maskKey(row.webhook_secret),
+    context_api_bearer_token: row.context_api_bearer_token,
+    monthly_checkin_agent_id: row.monthly_checkin_agent_id,
+    sms_on_lead_created: row.sms_on_lead_created,
+    sms_on_call_scheduled: row.sms_on_call_scheduled,
+    email_renewal_reminders: row.email_renewal_reminders,
+    updated_at: row.updated_at,
     context_api_url: `${base}/api/context`,
     meta_webhook_url: `${base}/api/webhooks/meta?secret=${row.webhook_secret}`,
     website_form_webhook_url: `${base}/api/webhooks/website-form?secret=${row.webhook_secret}`,
