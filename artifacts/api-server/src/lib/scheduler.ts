@@ -28,37 +28,32 @@ export function buildCallbackVars(
   let callbackTime = "";
   const first = (leadName ?? "").trim().split(/\s+/)[0] ?? "";
   const namePrefix = first ? `${first} ji, ` : "";
-  let callbackOpening = `${namePrefix}aapne humhe wapas call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+  let callbackOpening = `${namePrefix}aapne humhe wapas call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
 
   if (notes) {
-    // "Customer requested callback in 2 minute(s)"
     const minMatch = notes.match(/in (\d+) minute/i);
-    // "Customer requested callback in 1 hour(s)"
     const hrMatch = notes.match(/in (\d+) hour/i);
-    // "Customer requested callback tomorrow..."
     const tomorrowMatch = notes.match(/\btomorrow\b/i);
-    // "Customer requested callback day after tomorrow..."
     const dayAfterMatch = notes.match(/day after tomorrow/i);
-    // "time unspecified, defaulted to 2 hours"
     const unspecifiedMatch = notes.match(/time unspecified/i);
 
     if (minMatch) {
       const n = minMatch[1];
       callbackTime = `${n} minute`;
-      callbackOpening = `${namePrefix}aapne humhe ${n} minute baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe ${n} minute baad call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
     } else if (hrMatch) {
       const n = hrMatch[1];
       callbackTime = `${n} hour`;
-      callbackOpening = `${namePrefix}aapne humhe ${n} ghante baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe ${n} ghante baad call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
     } else if (dayAfterMatch) {
       callbackTime = "day after tomorrow";
-      callbackOpening = `${namePrefix}aapne humhe parso call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe parso call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
     } else if (tomorrowMatch) {
       callbackTime = "tomorrow";
-      callbackOpening = `${namePrefix}aapne humhe kal call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe kal call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
     } else if (unspecifiedMatch) {
       callbackTime = "later";
-      callbackOpening = `${namePrefix}aapne humhe baad mein call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe baad mein call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
     }
   }
 
