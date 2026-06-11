@@ -9,7 +9,7 @@ and which variables to reference in each prompt so the AI has full memory of eve
 
 Before every outbound call, VoiceCRM automatically looks up the lead in the database and
 injects these variables into your Bolna agent. **You don't write any code** — just use
-the variable names in double-curly-braces `{{ variable_name }}` inside your Bolna prompt.
+the variable names in single-curly-braces `{variable_name}` inside your Bolna prompt.
 
 ---
 
@@ -17,20 +17,20 @@ the variable names in double-curly-braces `{{ variable_name }}` inside your Boln
 
 | Variable | What it contains | Example value |
 |---|---|---|
-| `{{ user_name }}` | Lead's full name | `Ramesh Kumar` |
-| `{{ gender }}` | Lead's gender | `male` / `female` / `other` |
-| `{{ city }}` | Lead's city | `Mumbai` |
-| `{{ insurance_type }}` | Insurance interest | `life` / `health` / `motor` |
-| `{{ call_type }}` | Why this call is happening | `new` / `drop_retry` / `callback` / `inbound_known` |
-| `{{ context }}` | Summary of the last call with this person | *"Customer showed interest in term plan, asked for callback after salary..."* |
-| `{{ opening_line }}` | Pre-built opening sentence for this call | *"Ramesh ji, lagta hai call cut ho gayi..."* |
-| `{{ callback_opening }}` | Opening line for callback calls specifically | *"Aapne humse baad mein call karne ko kaha tha..."* |
-| `{{ callback_reason }}` | Why they asked to be called back | *"Customer requested callback in 30 minutes"* |
-| `{{ previous_summary }}` | Same as context (alias) | *"..."* |
-| `{{ policy_number }}` | Their existing policy number (if any) | `LIC-2023-884421` |
-| `{{ renewal_date }}` | Their policy renewal date (if any) | `2026-09-15` |
-| `{{ account_status }}` | Their current lead stage | `NEW` / `CONTACTED` / `INTERESTED` / `DOCS_PENDING` |
-| `{{ lead_id }}` | Internal UUID (for reference only) | `uuid-xxx` |
+| `{user_name}` | Lead's full name | `Ramesh Kumar` |
+| `{gender}` | Lead's gender | `male` / `female` / `other` |
+| `{city}` | Lead's city | `Mumbai` |
+| `{insurance_type}` | Insurance interest | `life` / `health` / `motor` |
+| `{call_type}` | Why this call is happening | `new` / `drop_retry` / `callback` / `inbound_known` |
+| `{context}` | Summary of the last call with this person | *"Customer showed interest in term plan, asked for callback after salary..."* |
+| `{opening_line}` | Pre-built opening sentence for this call | *"Ramesh ji, lagta hai call cut ho gayi..."* |
+| `{callback_opening}` | Opening line for callback calls specifically | *"Aapne humse baad mein call karne ko kaha tha..."* |
+| `{callback_reason}` | Why they asked to be called back | *"Customer requested callback in 30 minutes"* |
+| `{previous_summary}` | Same as context (alias) | *"..."* |
+| `{policy_number}` | Their existing policy number (if any) | `LIC-2023-884421` |
+| `{renewal_date}` | Their policy renewal date (if any) | `2026-09-15` |
+| `{account_status}` | Their current lead stage | `NEW` / `CONTACTED` / `INTERESTED` / `DOCS_PENDING` |
+| `{lead_id}` | Internal UUID (for reference only) | `uuid-xxx` |
 
 > **Call type values explained:**
 > - `new` — first ever call to this number, no history
@@ -59,36 +59,36 @@ the variable names in double-curly-braces `{{ variable_name }}` inside your Boln
 You are an insurance sales executive for [YOUR AGENCY NAME], calling in Hindi/Hinglish.
 
 ## Lead Context
-- Name: {{ user_name }}
-- Gender: {{ gender }}
-- City: {{ city }}
-- Insurance Interest: {{ insurance_type }}
-- Lead Stage: {{ account_status }}
-- Call Type: {{ call_type }}
+- Name: {user_name}
+- Gender: {gender}
+- City: {city}
+- Insurance Interest: {insurance_type}
+- Lead Stage: {account_status}
+- Call Type: {call_type}
 
 ## Memory from Previous Calls
-{{ context }}
+{context}
 
 ## Instructions Based on Call Type
 
 **If call_type is "new":**
 Introduce yourself warmly. Say you're calling from [YOUR AGENCY NAME].
-Ask about their insurance needs. Opening: "Namaste, {{ user_name }} ji!
+Ask about their insurance needs. Opening: "Namaste, {user_name} ji!
 Main [Your Name] bol raha/rahi hoon [AGENCY NAME] se. Aapko thodi der ke liye
 insurance ke baare mein baat karni thi."
 
 **If call_type is "drop_retry":**
-Use this exact opening: {{ opening_line }}
-Then continue from where the last call left off based on: {{ context }}
+Use this exact opening: {opening_line}
+Then continue from where the last call left off based on: {context}
 
 **If call_type is "callback":**
-Use this exact opening: {{ callback_opening }}
-Reason for callback: {{ callback_reason }}
-Refer to previous summary: {{ context }}
+Use this exact opening: {callback_opening}
+Reason for callback: {callback_reason}
+Refer to previous summary: {context}
 
 **If call_type is "inbound_known":**
-Greet them as a returning customer. Refer to: {{ context }}
-Policy number (if any): {{ policy_number }}
+Greet them as a returning customer. Refer to: {context}
+Policy number (if any): {policy_number}
 
 ## Personality
 - Speak in natural Hinglish (mix of Hindi and English)
@@ -134,13 +134,13 @@ This agent gets the full context plus these extra fields when a renewal is near:
 
 | Variable | What it contains |
 |---|---|
-| `{{ user_name }}` | Customer's full name |
-| `{{ policy_number }}` | Their active policy number |
-| `{{ renewal_date }}` | When their policy renews (YYYY-MM-DD) |
-| `{{ insurance_type }}` | Type of policy (life, health, motor…) |
-| `{{ context }}` | Summary of last interaction |
-| `{{ account_status }}` | Their current stage (usually `POLICY_ISSUED` or `RENEWAL_DUE`) |
-| `{{ city }}` | Their city |
+| `{user_name}` | Customer's full name |
+| `{policy_number}` | Their active policy number |
+| `{renewal_date}` | When their policy renews (YYYY-MM-DD) |
+| `{insurance_type}` | Type of policy (life, health, motor…) |
+| `{context}` | Summary of last interaction |
+| `{account_status}` | Their current stage (usually `POLICY_ISSUED` or `RENEWAL_DUE`) |
+| `{city}` | Their city |
 
 ### Prompt Template
 
@@ -149,23 +149,23 @@ You are a customer relationship executive at [YOUR AGENCY NAME], calling
 existing policyholders in Hindi/Hinglish for monthly check-ins and renewal reminders.
 
 ## Customer Details
-- Name: {{ user_name }}
-- City: {{ city }}
-- Policy Number: {{ policy_number }}
-- Policy Type: {{ insurance_type }}
-- Renewal Date: {{ renewal_date }}
-- Account Status: {{ account_status }}
+- Name: {user_name}
+- City: {city}
+- Policy Number: {policy_number}
+- Policy Type: {insurance_type}
+- Renewal Date: {renewal_date}
+- Account Status: {account_status}
 
 ## Previous Interaction Notes
-{{ context }}
+{context}
 
 ## Your Goal
 
 **If renewal_date is provided (within 30 days):**
 This is a renewal reminder call. Opening:
-"Namaste {{ user_name }} ji! Main [Your Name] bol raha/rahi hoon [AGENCY NAME] se.
-Aapki {{ insurance_type }} policy {{ policy_number }} ki renewal date
-{{ renewal_date }} aa rahi hai. Main aapko remind karne ke liye call kar raha/rahi tha."
+"Namaste {user_name} ji! Main [Your Name] bol raha/rahi hoon [AGENCY NAME] se.
+Aapki {insurance_type} policy {policy_number} ki renewal date
+{renewal_date} aa rahi hai. Main aapko remind karne ke liye call kar raha/rahi tha."
 
 Then:
 1. Confirm they want to renew
@@ -176,7 +176,7 @@ Then:
 
 **If renewal_date is NOT provided (monthly check-in):**
 This is a routine relationship call. Opening:
-"Namaste {{ user_name }} ji! Main [Your Name] bol raha/rahi hoon [AGENCY NAME] se.
+"Namaste {user_name} ji! Main [Your Name] bol raha/rahi hoon [AGENCY NAME] se.
 Bas ek quick check-in call tha — sab theek chal raha hai na aapka?"
 
 Then:
@@ -187,7 +187,7 @@ Then:
 
 ## Tone
 - Very warm, like a known relationship manager
-- Reference their previous interaction: {{ context }}
+- Reference their previous interaction: {context}
 - Never be transactional — make them feel valued, not sold to
 
 ## Compliance
@@ -209,10 +209,10 @@ Main Agent or create a dedicated campaign agent. The campaign variables availabl
 
 | Variable | Value |
 |---|---|
-| `{{ user_name }}` | Lead name from CSV |
-| `{{ name }}` | Same as user_name (alias) |
-| `{{ is_campaign }}` | `"true"` |
-| `{{ campaign_name }}` | Name of the campaign you created |
+| `{user_name}` | Lead name from CSV |
+| `{name}` | Same as user_name (alias) |
+| `{is_campaign}` | `"true"` |
+| `{campaign_name}` | Name of the campaign you created |
 
 Plus all the standard memory variables above.
 
@@ -233,4 +233,4 @@ Plus all the standard memory variables above.
 1. **Always fill in leads completely** — name, city, gender, insurance type. These fields directly shape what the agent says.
 2. **The system auto-detects callback intent** — if a customer says "baad mein call karna", the system schedules a follow-up automatically and the agent opens with the right line next time.
 3. **Drop retry is automatic** — if a call drops within 15 minutes, the next call will open with an apology and pick up from the last summary.
-4. **Summaries are generated by Bolna** — make sure your Bolna agent is configured to generate a call summary at the end of each call. This becomes the `{{ context }}` for all future calls to that number.
+4. **Summaries are generated by Bolna** — make sure your Bolna agent is configured to generate a call summary at the end of each call. This becomes the `{context}` for all future calls to that number.
