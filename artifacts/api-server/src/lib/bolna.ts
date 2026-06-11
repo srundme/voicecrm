@@ -150,7 +150,16 @@ export const bolna = {
       recipient_phone_number: toE164India(opts.phone),
       user_data: opts.variables ?? {},
     };
-    logger.info({ bolna_call_payload: payload }, "Bolna startCall payload");
+    const ud = payload.user_data as Record<string, unknown>;
+    logger.info(
+      {
+        agent_id: payload.agent_id,
+        lead_id: ud["lead_id"],
+        call_type: ud["call_type"],
+        is_callback: ud["is_callback"],
+      },
+      "Bolna startCall",
+    );
     const res = await request<Record<string, unknown>>("/call", {
       method: "POST",
       body: JSON.stringify(payload),
