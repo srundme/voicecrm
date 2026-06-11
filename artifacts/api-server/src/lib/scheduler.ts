@@ -21,9 +21,14 @@ const TICK_INTERVAL_MS = 60_000;
  * Passed as {{is_callback}}, {{callback_time}}, {{callback_opening}} template
  * variables so the agent's system prompt can open the call contextually.
  */
-function buildCallbackVars(notes: string | null): Record<string, string> {
+function buildCallbackVars(
+  notes: string | null,
+  leadName: string = "",
+): Record<string, string> {
   let callbackTime = "";
-  let callbackOpening = "Aapne humhe wapas call karne ko kaha tha. Kya ab baat kar sakte hain?";
+  const first = (leadName ?? "").trim().split(/\s+/)[0] ?? "";
+  const namePrefix = first ? `${first} ji, ` : "";
+  let callbackOpening = `${namePrefix}aapne humhe wapas call karne ko kaha tha. Kya ab baat kar sakte hain?`;
 
   if (notes) {
     // "Customer requested callback in 2 minute(s)"
@@ -40,20 +45,20 @@ function buildCallbackVars(notes: string | null): Record<string, string> {
     if (minMatch) {
       const n = minMatch[1];
       callbackTime = `${n} minute`;
-      callbackOpening = `Aapne humhe ${n} minute baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe ${n} minute baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
     } else if (hrMatch) {
       const n = hrMatch[1];
       callbackTime = `${n} hour`;
-      callbackOpening = `Aapne humhe ${n} ghante baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe ${n} ghante baad call karne ko kaha tha. Kya ab baat kar sakte hain?`;
     } else if (dayAfterMatch) {
       callbackTime = "day after tomorrow";
-      callbackOpening = `Aapne humhe parso call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe parso call karne ko kaha tha. Kya ab baat kar sakte hain?`;
     } else if (tomorrowMatch) {
       callbackTime = "tomorrow";
-      callbackOpening = `Aapne humhe kal call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe kal call karne ko kaha tha. Kya ab baat kar sakte hain?`;
     } else if (unspecifiedMatch) {
       callbackTime = "later";
-      callbackOpening = `Aapne humhe baad mein call karne ko kaha tha. Kya ab baat kar sakte hain?`;
+      callbackOpening = `${namePrefix}aapne humhe baad mein call karne ko kaha tha. Kya ab baat kar sakte hain?`;
     }
   }
 
@@ -62,6 +67,14 @@ function buildCallbackVars(notes: string | null): Record<string, string> {
     call_type: "callback",
     callback_time: callbackTime,
     callback_opening: callbackOpening,
+    // opening_line must be set here because buildCallContext will see the
+    // follow-up as IN_PROGRESS (already claimed) and return inbound_known
+    // with opening_line: "" — this override ensures the prompt's first
+    // {%- if opening_line %} block fires with the correct callback greeting.
+    opening_line: callbackOpening,
+    // callback_reason carries the notes so the agent has context even when
+    // buildCallContext returns inbound_known instead of callback.
+    callback_reason: notes ?? "",
   };
 }
 
@@ -121,7 +134,7 @@ async function processFollowUp(
   // "Ji, aapne mujhe X baad call karne ko kaha tha. Kya ab baat kar sakte hain?"
   const callbackVars =
     followUp.type === "CALLBACK_REQUESTED"
-      ? buildCallbackVars(followUp.notes)
+      ? buildCallbackVars(followUp.notes, lead.full_name)
       : {};
 
   const outcome = await triggerCall({
