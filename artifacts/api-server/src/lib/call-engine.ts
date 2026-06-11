@@ -177,7 +177,15 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
 
     if (!leadId) return; // Cannot schedule a follow-up without a lead
 
-    const text = [call.transcript ?? "", call.summary ?? ""].join(" ");
+    // Strip assistant lines from the transcript before parsing so that
+    // Dhivya's opening line (which echoes the *previous* callback time,
+    // e.g. "aapne humhe 10 minute baad call karne ko kaha tha") cannot
+    // shadow the customer's actual new request later in the conversation.
+    const userOnlyTranscript = (call.transcript ?? "")
+      .split("\n")
+      .filter((l) => !/^\s*assistant\s*:/i.test(l))
+      .join(" ");
+    const text = [userOnlyTranscript, call.summary ?? ""].join(" ");
     const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
     if (!intent) return;
 
