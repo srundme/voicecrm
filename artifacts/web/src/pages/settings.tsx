@@ -12,7 +12,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap, Bot } from "lucide-react";
+import { Save, Shield, Webhook, Eye, EyeOff, Copy, Check, Loader2, Plug, MessageSquare, Zap, Bot, Trash2, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -32,12 +43,15 @@ function CopyButton({ value }: { value?: string | null }) {
   );
 }
 
+const BASE = import.meta.env.BASE_URL;
+
 export default function Settings() {
   const { data: config, isLoading } = useGetApiConfig();
   const updateConfig = useUpdateApiConfig();
   const testConnection = useTestConnection();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [resetting, setResetting] = useState(false);
 
   const { data: agentsData } = useListAgents();
   const { data: automationsData } = useListAutomations();
@@ -126,6 +140,20 @@ export default function Settings() {
       });
     }
   }, [config]);
+
+  const handleResetTestData = async () => {
+    setResetting(true);
+    try {
+      const res = await fetch(`${BASE}api/admin/reset-test-data`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await res.text());
+      queryClient.clear();
+      toast({ title: "Test data cleared", description: "All leads, calls, and follow-ups have been deleted." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Reset failed", description: e.message });
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleSave = () => {
     const payload: Record<string, unknown> = { ...formData };
@@ -382,6 +410,49 @@ export default function Settings() {
             </CardContent>
           </Card>
         )}
+
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              <CardTitle className="text-destructive">Danger Zone</CardTitle>
+            </div>
+            <CardDescription>Irreversible actions. Use only while testing.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+              <div>
+                <p className="font-medium text-sm">Delete all test data</p>
+                <p className="text-sm text-muted-foreground">Permanently removes all leads, call logs, follow-ups, and policies. Settings and automations are kept.</p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={resetting}>
+                    {resetting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                    Reset Data
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete all data?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete <strong>all leads, call logs, follow-ups, and policies</strong> in your account. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                      onClick={handleResetTestData}
+                    >
+                      Yes, delete everything
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
