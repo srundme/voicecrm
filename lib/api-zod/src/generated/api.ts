@@ -89,7 +89,7 @@ export const TestConnectionResponse = zod.object({
 
 export const ListLeadsQueryParams = zod.object({
   "search": zod.coerce.string().optional(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']).optional(),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']).optional(),
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']).optional(),
   "insuranceType": zod.enum(['LIFE', 'HEALTH', 'MOTOR', 'TERM', 'ULIP', 'ENDOWMENT', 'ACCIDENT', 'TRAVEL']).optional(),
   "city": zod.coerce.string().optional(),
@@ -129,7 +129,7 @@ export const ListLeadsResponse = zod.object({
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']),
   "source_campaign_id": zod.string().nullish(),
   "source_form_id": zod.string().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
@@ -169,7 +169,7 @@ export const CreateLeadBody = zod.object({
   "sum_assured_interest": zod.number().optional(),
   "premium_budget": zod.number().optional(),
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']).optional(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']).optional(),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']).optional(),
   "assigned_to": zod.string().optional(),
   "notes": zod.string().optional(),
   "tags": zod.array(zod.string()).optional(),
@@ -207,7 +207,7 @@ export const GetLeadResponse = zod.object({
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']),
   "source_campaign_id": zod.string().nullish(),
   "source_form_id": zod.string().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
@@ -284,7 +284,7 @@ export const GetLeadResponse = zod.object({
   "lead_id": zod.string(),
   "lead_name": zod.string().nullish(),
   "policy_id": zod.string().nullish(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']),
   "scheduled_at": zod.coerce.date(),
   "completed_at": zod.coerce.date().nullish(),
   "bolna_agent_id": zod.string().nullish(),
@@ -322,7 +322,7 @@ export const UpdateLeadBody = zod.object({
   "insurance_type": zod.union([zod.enum(['LIFE', 'HEALTH', 'MOTOR', 'TERM', 'ULIP', 'ENDOWMENT', 'ACCIDENT', 'TRAVEL']),zod.null()]).optional(),
   "sum_assured_interest": zod.number().nullish(),
   "premium_budget": zod.number().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']).optional(),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']).optional(),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
@@ -355,7 +355,7 @@ export const UpdateLeadResponse = zod.object({
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']),
   "source_campaign_id": zod.string().nullish(),
   "source_form_id": zod.string().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
@@ -422,7 +422,7 @@ export const AddLeadNoteResponse = zod.object({
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']),
   "source_campaign_id": zod.string().nullish(),
   "source_form_id": zod.string().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
@@ -622,7 +622,7 @@ export const DeletePolicyParams = zod.object({
 
 export const ListFollowUpsQueryParams = zod.object({
   "status": zod.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED', 'RESCHEDULED']).optional(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']).optional(),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']).optional(),
   "dateFrom": zod.date().optional(),
   "dateTo": zod.date().optional()
 })
@@ -633,7 +633,7 @@ export const ListFollowUpsResponseItem = zod.object({
   "lead_id": zod.string(),
   "lead_name": zod.string().nullish(),
   "policy_id": zod.string().nullish(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']),
   "scheduled_at": zod.coerce.date(),
   "completed_at": zod.coerce.date().nullish(),
   "bolna_agent_id": zod.string().nullish(),
@@ -649,7 +649,7 @@ export const ListFollowUpsResponse = zod.array(ListFollowUpsResponseItem)
 export const CreateFollowUpBody = zod.object({
   "lead_id": zod.string(),
   "policy_id": zod.string().optional(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']),
   "scheduled_at": zod.coerce.date(),
   "bolna_agent_id": zod.string().optional(),
   "notes": zod.string().optional()
@@ -661,7 +661,7 @@ export const UpdateFollowUpParams = zod.object({
 })
 
 export const UpdateFollowUpBody = zod.object({
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']).optional(),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']).optional(),
   "scheduled_at": zod.coerce.date().optional(),
   "bolna_agent_id": zod.string().nullish(),
   "notes": zod.string().nullish(),
@@ -674,7 +674,7 @@ export const UpdateFollowUpResponse = zod.object({
   "lead_id": zod.string(),
   "lead_name": zod.string().nullish(),
   "policy_id": zod.string().nullish(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']),
   "scheduled_at": zod.coerce.date(),
   "completed_at": zod.coerce.date().nullish(),
   "bolna_agent_id": zod.string().nullish(),
@@ -1051,7 +1051,7 @@ export const GetDashboardSummaryResponse = zod.object({
 
 
 export const GetLeadFunnelResponseItem = zod.object({
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "count": zod.number()
 })
 export const GetLeadFunnelResponse = zod.array(GetLeadFunnelResponseItem)
@@ -1103,7 +1103,7 @@ export const GetTodayFollowUpsResponseItem = zod.object({
   "lead_id": zod.string(),
   "lead_name": zod.string().nullish(),
   "policy_id": zod.string().nullish(),
-  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY']),
+  "type": zod.enum(['RENEWAL_REMINDER', 'MONTHLY_CHECKIN', 'CALLBACK_REQUESTED', 'MANUAL', 'POLICY_ANNIVERSARY', 'REFERRAL', 'RETRY_NO_ANSWER']),
   "scheduled_at": zod.coerce.date(),
   "completed_at": zod.coerce.date().nullish(),
   "bolna_agent_id": zod.string().nullish(),
@@ -1142,7 +1142,7 @@ export const GetRecentMetaLeadsResponseItem = zod.object({
   "source": zod.enum(['META_ADS', 'WEBSITE_FORM', 'CSV_UPLOAD', 'MANUAL', 'INBOUND_CALL', 'REFERRAL']),
   "source_campaign_id": zod.string().nullish(),
   "source_form_id": zod.string().nullish(),
-  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL']),
+  "stage": zod.enum(['NEW', 'CONTACTED', 'INTERESTED', 'DOCS_PENDING', 'POLICY_ISSUED', 'RENEWAL_DUE', 'LOST', 'DO_NOT_CALL', 'COLD']),
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
