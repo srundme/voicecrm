@@ -1,4 +1,4 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -79,13 +79,15 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     .orderBy(desc(callLogsTable.created_at))
     .limit(1);
 
+  // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
+  // before triggerCall runs) are still detected here and get the right call_type + context.
   const [pendingCallback] = await db
     .select()
     .from(followUpsTable)
     .where(
       and(
         eq(followUpsTable.lead_id, lead.id),
-        eq(followUpsTable.status, "PENDING"),
+        inArray(followUpsTable.status, ["PENDING", "IN_PROGRESS"]),
         eq(followUpsTable.type, "CALLBACK_REQUESTED"),
       ),
     )
@@ -156,11 +158,13 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     return {
       ...base,
       call_type: "callback",
-      context: "",
+      // Pass lastSummary as context so Dhivya has full memory of the previous call.
+      context: lastSummary,
       opening_line: callbackOpening,
       callback_opening: callbackOpening,
       callback_reason: reasonParts.join("\n\n"),
       previous_execution_id: lastExecId,
+      previous_summary: lastSummary,
     };
   }
 
