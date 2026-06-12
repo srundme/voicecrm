@@ -1,5 +1,5 @@
 import { useRoute } from "wouter";
-import { useGetLead, getGetLeadQueryKey, useUpdateLead, useTriggerLeadCall, getListAgentsQueryKey, useListAgents, LeadStage, type LeadDetail as LeadDetailType, type LeadUpdate } from "@workspace/api-client-react";
+import { useGetLead, getGetLeadQueryKey, useUpdateLead, useTriggerLeadCall, getListAgentsQueryKey, useListAgents, useCreatePolicy, LeadStage, type LeadDetail as LeadDetailType, type LeadUpdate, type PolicyInput } from "@workspace/api-client-react";
 import { formatPhone, formatDate, formatDateTime, formatCurrency } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,9 @@ import {
   Phone, Mail, MapPin, Building, Calendar, PhoneCall, Play, ChevronDown, ChevronRight,
   Clock, ArrowLeft, User, ArrowRight, CheckCircle2, XCircle, AlertCircle, Mic, FileText,
   Headphones, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon,
-  Activity, Hash
+  Activity, Hash, ShieldX, ShieldCheck, BadgeIndianRupee, DollarSign
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 const STAGE_META: Record<string, { label: string; color: string; bg: string; icon: any }> = {
   NEW:           { label: "New",           color: "#6366f1", bg: "#6366f112", icon: User },
@@ -290,11 +291,95 @@ function CallLogRow({ call, index }: { call: any; index: number }) {
   );
 }
 
+function MarkAsSoldDialog({ lead }: { lead: LeadDetailType }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ insurer_name: "", policy_number: "", annual_premium: "", policy_type: lead.insurance_type ?? "LIFE", start_date: "" });
+  const createPolicy = useCreatePolicy();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const update = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }));
+
+  const submit = () => {
+    if (!form.insurer_name.trim()) { toast({ title: "Insurer name required", variant: "destructive" }); return; }
+    const data: PolicyInput = {
+      lead_id: lead.id,
+      policy_type: form.policy_type as PolicyInput["policy_type"],
+      insurer_name: form.insurer_name.trim(),
+      policy_number: form.policy_number.trim() || undefined,
+      annual_premium: form.annual_premium ? parseInt(form.annual_premium.replace(/\D/g, ""), 10) : undefined,
+      start_date: form.start_date ? new Date(form.start_date) : undefined,
+      status: "ACTIVE",
+    };
+    createPolicy.mutate({ data }, {
+      onSuccess: () => {
+        toast({ title: "Policy recorded! Lead marked as sold." });
+        queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(lead.id) });
+        setOpen(false);
+        setForm({ insurer_name: "", policy_number: "", annual_premium: "", policy_type: lead.insurance_type ?? "LIFE", start_date: "" });
+      },
+      onError: () => toast({ title: "Could not save policy", variant: "destructive" }),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="h-8 gap-1.5 text-[#22c55e] border-[#22c55e40] hover:bg-[#22c55e10]">
+        <BadgeIndianRupee className="w-3.5 h-3.5" />
+        Mark as Sold
+      </Button>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Record Policy Sale</DialogTitle>
+          <DialogDescription>Log the policy details for {lead.full_name}.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1 col-span-2">
+            <Label className="text-xs">Insurer Name *</Label>
+            <Input value={form.insurer_name} onChange={(e) => update({ insurer_name: e.target.value })} placeholder="LIC, HDFC Life, Star Health…" className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Policy Number</Label>
+            <Input value={form.policy_number} onChange={(e) => update({ policy_number: e.target.value })} placeholder="POL123456" className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Annual Premium (₹)</Label>
+            <Input value={form.annual_premium} onChange={(e) => update({ annual_premium: e.target.value.replace(/\D/g, "") })} placeholder="12000" className="h-8 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Policy Type</Label>
+            <Select value={form.policy_type} onValueChange={(v) => update({ policy_type: v })}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["LIFE","HEALTH","MOTOR","TERM","ULIP","ENDOWMENT","ACCIDENT","TRAVEL"].map((t) => (
+                  <SelectItem key={t} value={t} className="text-sm capitalize">{t.toLowerCase()}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Start Date</Label>
+            <Input type="date" value={form.start_date} onChange={(e) => update({ start_date: e.target.value })} className="h-8 text-sm" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button size="sm" onClick={submit} disabled={createPolicy.isPending} className="gap-1.5 bg-[#22c55e] hover:bg-[#16a34a]">
+            {createPolicy.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Save Policy
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function LeadDetail() {
   const [, params] = useRoute("/leads/:id");
   const id = params?.id || "";
 
   const { data: lead, isLoading } = useGetLead(id, { query: { enabled: !!id, queryKey: getGetLeadQueryKey(id) } });
+  const updateLead = useUpdateLead();
+  const queryClient = useQueryClient();
 
   const callLogs = useMemo(() => {
     if (!lead?.call_logs) return [];
@@ -385,6 +470,24 @@ export default function LeadDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {lead.is_dnd && (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-[#ef4444] bg-[#ef444412] border border-[#ef444430] px-2 py-1 rounded">
+              <ShieldX className="w-3 h-3" /> DND
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className={`h-8 gap-1.5 text-[11px] ${lead.is_dnd ? "border-red-200 text-red-500 hover:bg-red-50" : "text-muted-foreground hover:text-red-500"}`}
+            onClick={() => updateLead.mutate({ id: lead.id, data: { is_dnd: !lead.is_dnd } }, {
+              onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(lead.id) })
+            })}
+            title={lead.is_dnd ? "Remove DND" : "Mark as DND (Do Not Disturb)"}
+          >
+            {lead.is_dnd ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldX className="w-3.5 h-3.5" />}
+            {lead.is_dnd ? "Remove DND" : "DND"}
+          </Button>
+          <MarkAsSoldDialog lead={lead} />
           <TriggerCallDialog lead={lead} />
           <EditLeadDialog lead={lead} />
         </div>
@@ -615,6 +718,29 @@ export default function LeadDetail() {
                 )}
               </div>
             </div>
+
+            {/* Policies */}
+            {lead.policies && lead.policies.length > 0 && (
+              <div className="bg-white border border-[#22c55e30] rounded-lg p-4">
+                <h3 className="text-[12px] font-semibold text-[#4b4f6b] uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                  <BadgeIndianRupee className="w-3.5 h-3.5 text-[#22c55e]" /> Policies ({lead.policies.length})
+                </h3>
+                <div className="space-y-3">
+                  {lead.policies.map((p) => (
+                    <div key={p.id} className="bg-[#f0fdf4] border border-[#22c55e30] rounded p-3 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-semibold text-[#16a34a]">{p.insurer_name || "Unknown Insurer"}</span>
+                        <span className="text-[10px] font-medium bg-[#22c55e20] text-[#16a34a] px-1.5 py-0.5 rounded capitalize">{p.policy_type.toLowerCase()}</span>
+                      </div>
+                      {p.policy_number && <div className="text-[11px] text-muted-foreground">Policy # <strong className="text-[#1a1c2e] font-mono">{p.policy_number}</strong></div>}
+                      {p.annual_premium && <div className="text-[11px] text-muted-foreground">Premium <strong className="text-[#1a1c2e]">{formatCurrency(p.annual_premium)}</strong> / year</div>}
+                      {p.start_date && <div className="text-[11px] text-muted-foreground">Started <strong className="text-[#1a1c2e]">{formatDate(p.start_date)}</strong></div>}
+                      <div className="text-[10px] text-[#22c55e] font-medium uppercase tracking-wide">{p.status}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {lead.notes && (
               <div className="bg-white border border-[#dfe1ed] rounded-lg p-4">
