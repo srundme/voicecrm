@@ -94,9 +94,9 @@ export function buildCallbackVars(
     // with opening_line: "" — this override ensures the prompt's first
     // {%- if opening_line %} block fires with the correct callback greeting.
     opening_line: callbackOpening,
-    // callback_reason carries the notes so the agent has context even when
-    // buildCallContext returns inbound_known instead of callback.
-    callback_reason: notes ?? "",
+    // Do NOT set callback_reason here — context.ts builds a richer version
+    // that includes both the timing notes AND combined previous call summaries.
+    // Overriding it here would erase the conversation history from {callback_reason}.
   };
 }
 
