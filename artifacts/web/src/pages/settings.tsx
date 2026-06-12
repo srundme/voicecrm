@@ -102,6 +102,7 @@ export default function Settings() {
     sms_on_lead_created: false,
     sms_on_call_scheduled: false,
     monthly_checkin_agent_id: "",
+    human_agent_phone: "",
   });
 
   const SENTINEL = "configured";
@@ -115,6 +116,7 @@ export default function Settings() {
         sms_on_lead_created: config.sms_on_lead_created || false,
         sms_on_call_scheduled: config.sms_on_call_scheduled || false,
         monthly_checkin_agent_id: config.monthly_checkin_agent_id || "",
+        human_agent_phone: config.human_agent_phone || "",
       });
     }
   }, [config]);
@@ -259,6 +261,17 @@ export default function Settings() {
                 id="sms_on_call_scheduled"
                 checked={formData.sms_on_call_scheduled}
                 onCheckedChange={(v) => setFormData(f => ({ ...f, sms_on_call_scheduled: v }))}
+              />
+            </div>
+            <div className="pt-2 border-t space-y-2">
+              <Label htmlFor="human_agent_phone">Human Agent Phone (for call transfer)</Label>
+              <p className="text-sm text-muted-foreground">When Dhivya transfers a call, an SMS summary is sent to this number so the agent is ready.</p>
+              <Input
+                id="human_agent_phone"
+                type="tel"
+                placeholder="+919876543210"
+                value={formData.human_agent_phone}
+                onChange={(e) => setFormData(f => ({ ...f, human_agent_phone: e.target.value }))}
               />
             </div>
           </CardContent>
