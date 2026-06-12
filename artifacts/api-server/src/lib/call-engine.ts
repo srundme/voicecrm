@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, gte, count } from "drizzle-orm";
 import { db, callLogsTable, leadsTable, followUpsTable, type CallLogRow } from "@workspace/db";
 import { bolna, mapBolnaStatusToCallStatus } from "./bolna";
 import { normalizePhone } from "./phone";
@@ -459,6 +459,7 @@ export function startPolling(callLogId: string, executionId: string): void {
     if (exec.ended || polls >= MAX_POLLS) {
       activePolls.delete(callLogId);
       if (updated && dropDetected) await maybeRetryOnDrop(updated);
+      if (updated) await maybeScheduleNoAnswerRetry(updated);
       if (updated && !dropDetected && updated.status === "COMPLETED") {
         await maybeAdvanceLeadStage(updated);
         await maybeScheduleCallback(updated);
@@ -519,6 +520,117 @@ async function maybeRetryOnDrop(call: CallLogRow): Promise<void> {
     }
   } catch (err) {
     logger.error({ err }, "retry-on-drop failed");
+  }
+}
+
+// ── No-answer retry scheduler ────────────────────────────────────────────────
+
+const MAX_NO_ANSWER_RETRIES = 6; // 2 days × ~3 windows/day
+const RETRY_DELAY_MS = 45 * 60 * 1000; // 45 minutes
+
+/**
+ * Clamp a candidate UTC Date to the next valid IST calling window.
+ * Windows (IST): morning 09:00–12:00 | afternoon 12:00–16:00 | evening 16:00–19:00
+ */
+function nextWindowTime(candidate: Date): Date {
+  const IST_OFFSET_MIN = 330; // UTC+5:30
+  const toIST = (d: Date) =>
+    new Date(d.getTime() + IST_OFFSET_MIN * 60_000);
+  const fromIST = (d: Date) =>
+    new Date(d.getTime() - IST_OFFSET_MIN * 60_000);
+
+  const ist = toIST(candidate);
+  const totalMin = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+
+  const windows = [
+    { start: 9 * 60, end: 12 * 60 },
+    { start: 12 * 60, end: 16 * 60 },
+    { start: 16 * 60, end: 19 * 60 },
+  ];
+
+  for (const w of windows) {
+    if (totalMin >= w.start && totalMin < w.end) return candidate;
+  }
+
+  // Find next window start today IST
+  for (const w of windows) {
+    if (w.start > totalMin) {
+      const next = new Date(ist);
+      next.setUTCHours(Math.floor(w.start / 60), w.start % 60, 0, 0);
+      return fromIST(next);
+    }
+  }
+
+  // No more windows today — use 09:00 IST tomorrow
+  const tomorrow = new Date(ist);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(9, 0, 0, 0);
+  return fromIST(tomorrow);
+}
+
+/**
+ * After a NO_ANSWER or BUSY call, schedule a retry within the next valid
+ * calling window. After MAX_NO_ANSWER_RETRIES, marks the lead as COLD.
+ * Only fires for first-time calls (not for calls that are already a retry).
+ */
+async function maybeScheduleNoAnswerRetry(call: CallLogRow): Promise<void> {
+  if (!call.lead_id) return;
+  if (call.status !== "NO_ANSWER" && call.status !== "BUSY") return;
+  // Don't stack retries on top of existing RETRY_ON_DROP immediate retries
+  if (call.retry_of_call_id) return;
+
+  try {
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+    const [{ value: existingCount }] = await db
+      .select({ value: count() })
+      .from(followUpsTable)
+      .where(
+        and(
+          eq(followUpsTable.lead_id, call.lead_id),
+          eq(followUpsTable.type, "RETRY_NO_ANSWER"),
+          gte(followUpsTable.created_at, twoDaysAgo),
+        ),
+      );
+
+    if ((existingCount ?? 0) >= MAX_NO_ANSWER_RETRIES) {
+      // Exhausted all retries — mark lead as cold
+      await db
+        .update(leadsTable)
+        .set({ stage: "COLD" })
+        .where(
+          and(
+            eq(leadsTable.id, call.lead_id),
+            inArray(leadsTable.stage, ["NEW", "CONTACTED"]),
+          ),
+        );
+      logger.info(
+        { leadId: call.lead_id, retries: existingCount },
+        "lead marked COLD after exhausting no-answer retries",
+      );
+      return;
+    }
+
+    const scheduledAt = nextWindowTime(
+      new Date(Date.now() + RETRY_DELAY_MS),
+    );
+
+    await db.insert(followUpsTable).values({
+      org_id: DEFAULT_ORG_ID,
+      lead_id: call.lead_id,
+      type: "RETRY_NO_ANSWER",
+      bolna_agent_id: call.bolna_agent_id,
+      scheduled_at: scheduledAt,
+      notes: `Auto-retry ${(existingCount ?? 0) + 1} of ${MAX_NO_ANSWER_RETRIES} — original call ${call.id}`,
+      status: "PENDING",
+    });
+
+    logger.info(
+      { leadId: call.lead_id, attempt: (existingCount ?? 0) + 1, scheduledAt },
+      "no-answer retry scheduled",
+    );
+  } catch (err) {
+    logger.error({ err }, "maybeScheduleNoAnswerRetry failed");
   }
 }
 
