@@ -127,6 +127,22 @@ export function buildReferralVars(
   };
 }
 
+/**
+ * Build Bolna variables for a RETRY_NO_ANSWER call — a scheduled retry after
+ * a missed call. Opens warmly without re-introducing from scratch.
+ */
+export function buildRetryNoAnswerVars(
+  leadName: string = "",
+): Record<string, string> {
+  const first = (leadName ?? "").trim().split(/\s+/)[0] ?? "";
+  const nameGreet = first ? `Hello ${first} ji` : "Hello";
+  const opening = `${nameGreet}, main Dhivya hoon Policyfy se — thodi der pehle call ki thi, aapka phone busy tha. Kya ab thoda time hai baat karne ka?`;
+  return {
+    call_type: "retry_no_answer",
+    opening_line: opening,
+  };
+}
+
 const RENEWAL_WINDOW_DAYS = 30;
 const TERMINAL_CALL_STATUSES = [
   "COMPLETED",
@@ -185,13 +201,20 @@ async function processFollowUp(
       ? buildCallbackVars(followUp.notes, lead.full_name)
       : followUp.type === "REFERRAL"
         ? buildReferralVars(followUp.notes, lead.full_name)
-        : {};
+        : followUp.type === "RETRY_NO_ANSWER"
+          ? buildRetryNoAnswerVars(lead.full_name)
+          : {};
+
+  const callTypeMap: Partial<Record<typeof followUp.type, string>> = {
+    REFERRAL: "referred",
+    RETRY_NO_ANSWER: "retry_no_answer",
+  };
 
   const outcome = await triggerCall({
     agentId,
     phone: lead.phone,
     leadId: lead.id,
-    callType: followUp.type === "REFERRAL" ? "referred" : followUp.type.toLowerCase(),
+    callType: callTypeMap[followUp.type] ?? followUp.type.toLowerCase(),
     variables: { name: lead.full_name, ...extraVars },
   });
 
