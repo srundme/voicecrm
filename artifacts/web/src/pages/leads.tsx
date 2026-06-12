@@ -27,7 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Link } from "wouter";
 import { formatPhone, formatDate } from "@/lib/format";
 import {
@@ -43,6 +43,8 @@ import {
   ChevronRight,
   Download,
   Filter,
+  Upload,
+  ShieldX,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -102,6 +104,66 @@ function SortIcon({ col, sort }: { col: SortKey; sort: { key: SortKey; dir: Sort
   return sort.dir === "asc"
     ? <ArrowUp className="w-3 h-3 text-primary" />
     : <ArrowDown className="w-3 h-3 text-primary" />;
+}
+
+function CsvImportButton() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) { toast({ title: "CSV must have a header row + data", variant: "destructive" }); return; }
+      const headers = lines[0]!.split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z_]/g, "_"));
+      const idx = (name: string) => headers.indexOf(name);
+      const rows = lines.slice(1).map((line) => {
+        const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        const get = (name: string) => cols[idx(name)]?.trim() || undefined;
+        return {
+          full_name: get("full_name") ?? get("name") ?? cols[0] ?? "",
+          phone: get("phone") ?? get("mobile") ?? cols[1] ?? "",
+          email: get("email"),
+          city: get("city"),
+          state: get("state"),
+          gender: get("gender"),
+          insurance_type: get("insurance_type"),
+          notes: get("notes"),
+        };
+      }).filter((r) => r.full_name && r.phone);
+
+      if (rows.length === 0) { toast({ title: "No valid rows found", variant: "destructive" }); return; }
+
+      const res = await fetch("/api/leads/bulk-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows, trigger_calls: false }),
+      });
+      const data = await res.json();
+      toast({ title: `Imported ${data.imported} leads`, description: data.skipped_duplicates > 0 ? `${data.skipped_duplicates} duplicates skipped` : undefined });
+      queryClient.invalidateQueries({ queryKey: getListLeadsQueryKey() });
+    } catch {
+      toast({ title: "Import failed", variant: "destructive" });
+    } finally {
+      setLoading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <>
+      <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+      <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => fileRef.current?.click()} disabled={loading}>
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+        Import CSV
+      </Button>
+    </>
+  );
 }
 
 function NewLeadDialog() {
@@ -328,6 +390,7 @@ export default function Leads() {
             <Download className="w-3.5 h-3.5" />
             Export
           </Button>
+          <CsvImportButton />
           <NewLeadDialog />
         </div>
       </div>
@@ -429,7 +492,14 @@ export default function Leads() {
 
                     {/* Stage */}
                     <td className="border-r border-[#dfe1ed] px-2.5 h-9">
-                      <StagePill stage={lead.stage} />
+                      <div className="flex items-center gap-1">
+                        <StagePill stage={lead.stage} />
+                        {lead.is_dnd && (
+                          <span title="Do Not Disturb" className="flex items-center text-[#ef4444]">
+                            <ShieldX className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Insurance */}
