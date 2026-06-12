@@ -37,7 +37,7 @@ import {
   BulkImportLeadsBody,
 } from "@workspace/api-zod";
 import { DEFAULT_ORG_ID } from "../lib/org";
-import { normalizePhone } from "../lib/phone";
+import { normalizePhone, isValidIndianMobile } from "../lib/phone";
 import { triggerCall } from "../lib/call-engine";
 import { bolna } from "../lib/bolna";
 import { serializeCallLogs } from "../lib/serialize";
@@ -166,11 +166,23 @@ router.post("/leads", async (req, res): Promise<void> => {
     return;
   }
   const data = parsed.data;
+  const phone = normalizePhone(data.phone);
+  if (!isValidIndianMobile(phone)) {
+    res.status(400).json({ error: "Invalid Indian mobile number" });
+    return;
+  }
+  if (data.phone_alt) {
+    const phoneAlt = normalizePhone(data.phone_alt);
+    if (!isValidIndianMobile(phoneAlt)) {
+      res.status(400).json({ error: "Invalid alternate Indian mobile number" });
+      return;
+    }
+  }
   const [row] = await db
     .insert(leadsTable)
     .values({
       ...data,
-      phone: normalizePhone(data.phone),
+      phone,
       phone_alt: data.phone_alt ? normalizePhone(data.phone_alt) : undefined,
       source: data.source ?? "MANUAL",
       org_id: DEFAULT_ORG_ID,
@@ -236,7 +248,14 @@ router.patch("/leads/:id", async (req, res): Promise<void> => {
     return;
   }
   const data = { ...parsed.data };
-  if (data.phone) data.phone = normalizePhone(data.phone);
+  if (data.phone) {
+    const phone = normalizePhone(data.phone);
+    if (!isValidIndianMobile(phone)) {
+      res.status(400).json({ error: "Invalid Indian mobile number" });
+      return;
+    }
+    data.phone = phone;
+  }
   const [row] = await db
     .update(leadsTable)
     .set(data)
@@ -404,7 +423,7 @@ router.post("/leads/bulk-import", async (req, res): Promise<void> => {
   for (const [i, raw] of rows.entries()) {
     const name = (raw.full_name ?? "").trim();
     const phone = normalizePhone(raw.phone ?? "");
-    if (!name || phone.length !== 10) {
+    if (!name || !isValidIndianMobile(phone)) {
       skippedInvalid += 1;
       errors.push(`Row ${i + 1}: missing name or invalid phone`);
       continue;
