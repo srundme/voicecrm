@@ -75,6 +75,7 @@ export const followUpTypeEnum = pgEnum("follow_up_type", [
   "CALLBACK_REQUESTED",
   "MANUAL",
   "POLICY_ANNIVERSARY",
+  "REFERRAL",
 ]);
 
 export const followUpStatusEnum = pgEnum("follow_up_status", [
