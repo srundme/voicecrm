@@ -183,13 +183,17 @@ export const bolna = {
   async startCall(opts: {
     agentId: string;
     phone: string;
+    fromPhone?: string;
     variables?: Record<string, unknown>;
   }): Promise<BolnaResult<StartCallResult>> {
-    const payload = {
+    const payload: Record<string, unknown> = {
       agent_id: opts.agentId,
       recipient_phone_number: toE164India(opts.phone),
       user_data: opts.variables ?? {},
     };
+    if (opts.fromPhone) {
+      payload.from_phone_number = opts.fromPhone;
+    }
     const ud = payload.user_data as Record<string, unknown>;
     logger.info(
       {
