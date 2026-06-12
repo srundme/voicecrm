@@ -76,7 +76,9 @@ async function handleContext(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: "Missing phone" });
     return;
   }
-  res.json(await buildCallContext(phone));
+  // The /context endpoint is only called by Bolna for inbound calls.
+  // Always mark isInbound=true so the callback opening is never served to a caller.
+  res.json(await buildCallContext(phone, true));
 }
 
 router.get("/context", handleContext);
@@ -297,19 +299,29 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
 
   // Call was made directly from Bolna (not via VoiceCRM) — create the log now.
   if (!row) {
-    // Bolna sends the callee's number as "user_number" (E.164 format, e.g. "+918904887300")
     const telephonyData = (body["telephony_data"] ?? {}) as Record<string, unknown>;
-    const rawPhone = String(
-      body["user_number"] ??
-      telephonyData["to_number"] ??
-      body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ??
-      (body["context_details"] as Record<string, unknown> | null)?.["recipient_phone_number"] ?? "",
-    );
-    logger.info({ rawPhone }, "Bolna webhook: phone extraction");
+    const rawDir = String(body["direction"] ?? telephonyData["direction"] ?? "outbound").toUpperCase();
+    const direction = rawDir === "INBOUND" ? "INBOUND" : "OUTBOUND";
+
+    // For inbound: caller's number is in telephony_data.from_number or from_number.
+    // For outbound: callee's number is in user_number / telephony_data.to_number.
+    const rawPhone = direction === "INBOUND"
+      ? String(
+          telephonyData["from_number"] ??
+          body["from_number"] ??
+          body["user_number"] ??
+          telephonyData["to_number"] ??
+          body["phone_number"] ?? body["phone"] ?? "",
+        )
+      : String(
+          body["user_number"] ??
+          telephonyData["to_number"] ??
+          body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ??
+          (body["context_details"] as Record<string, unknown> | null)?.["recipient_phone_number"] ?? "",
+        );
+    logger.info({ rawPhone, direction }, "Bolna webhook: phone extraction");
     const phone = normalizePhone(rawPhone);
     const agentId = String(body["agent_id"] ?? body["bolna_agent_id"] ?? "");
-    const rawDir = String(body["direction"] ?? "outbound").toUpperCase();
-    const direction = rawDir === "INBOUND" ? "INBOUND" : "OUTBOUND";
     const rawStatus = String(body["status"] ?? "completed");
 
     if (!agentId) {
