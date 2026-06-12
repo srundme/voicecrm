@@ -206,11 +206,15 @@ export default function Settings() {
           <div className="relative flex-1">
             <Input
               id={id}
+              name={field}
               type={reveal[id] ? "text" : "password"}
+              autoComplete="new-password"
               placeholder={isSaved ? "Key saved — enter new value to replace" : placeholder}
               value={isSaved ? "" : currentValue}
+              readOnly={isSaved}
+              onClick={isSaved ? () => setFormData(f => ({ ...f, [field]: "" })) : undefined}
               onChange={(e) => setFormData(f => ({ ...f, [field]: e.target.value }))}
-              className={`pr-9 ${isSaved ? "placeholder:text-emerald-600 placeholder:font-medium" : ""}`}
+              className={`pr-9 ${isSaved ? "placeholder:text-emerald-600 placeholder:font-medium cursor-text" : ""}`}
             />
             {!isSaved && (
               <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full w-9" onClick={() => setReveal(r => ({ ...r, [id]: !r[id] }))} title={reveal[id] ? "Hide" : "Show"}>
