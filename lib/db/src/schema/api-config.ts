@@ -13,6 +13,7 @@ export const apiConfigTable = pgTable("api_config", {
   webhook_secret: text("webhook_secret").notNull(),
   context_api_bearer_token: text("context_api_bearer_token").notNull(),
   monthly_checkin_agent_id: text("monthly_checkin_agent_id"),
+  human_agent_phone: text("human_agent_phone"),
   sms_on_lead_created: boolean("sms_on_lead_created").notNull().default(false),
   sms_on_call_scheduled: boolean("sms_on_call_scheduled").notNull().default(false),
   email_renewal_reminders: boolean("email_renewal_reminders")
