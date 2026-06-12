@@ -11,6 +11,7 @@ import { normalizePhone } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
 import { triggerCall, startPolling, maybeScheduleCallback, isProperCallEnding } from "../lib/call-engine";
+import { autoUpdateLeadStage } from "../lib/stage-classifier";
 import { runComplianceCheck } from "../lib/compliance";
 import {
   bolna,
@@ -406,6 +407,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     if (updated && isEnded && !dropDetected && status === "COMPLETED") {
       void maybeScheduleCallback(updated);
       void runComplianceCheck(updated);
+      void autoUpdateLeadStage(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
@@ -434,6 +436,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     if (updated && !dropDetected && status === "COMPLETED") {
       void maybeScheduleCallback(updated);
       void runComplianceCheck(updated);
+      void autoUpdateLeadStage(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
