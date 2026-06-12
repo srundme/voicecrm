@@ -152,6 +152,14 @@ Open with exactly: "{callback_opening}"
 
 Do NOT say the call was dropped. Do NOT re-introduce yourself. Just confirm they can talk now and continue.]
 
+{%- elif call_type == "referred" %}
+
+[This is a REFERRAL CALL — the original caller asked you to speak with this person on their behalf.
+
+Open with exactly: "{opening_line}"
+
+Do NOT re-introduce yourself as if you are calling a new lead. Do NOT mention any form or ad. Just explain who referred you and why, then ask if they can talk. Keep it warm and brief.]
+
 {%- elif call_type == "inbound_known" %}
 
 [This customer is calling in. They are a known contact in our system.
