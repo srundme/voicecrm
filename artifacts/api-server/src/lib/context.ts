@@ -170,7 +170,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
   // Skip this branch for inbound calls — when the customer calls us, they should
   // always get the inbound greeting, not the outbound "you asked me to call back" script.
   if (pendingCallback && !isInbound) {
-    const callbackOpening = `${HELLO} ${firstName(name)} ji, aapne mujhe baad mein call karne ko kaha tha — maine aapke liye kuch important dhundha tha, bas 2 minute ka kaam hai.`;
+    const callbackOpening = buildCallbackOpening(HELLO, firstName(name), pendingCallback.notes, combinedContext, insuranceType);
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
     if (combinedContext) reasonParts.push(`What you already know from previous calls:\n${combinedContext}`);
@@ -201,6 +201,41 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
       : undefined,
     account_status: lead.stage,
   };
+}
+
+/**
+ * Builds a dynamic callback opening based on the actual reason the callback
+ * was scheduled and what was discussed in previous calls.
+ * Never uses a fixed generic line — always references the real context.
+ */
+function buildCallbackOpening(
+  hello: string,
+  first: string,
+  notes: string | null,
+  combinedContext: string,
+  insuranceType: string,
+): string {
+  const name = first ? `${first} ji` : "aap";
+  const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
+
+  // Extract the core reason from notes (e.g. "Customer requested callback in 2 hours | activity: discussing term plans")
+  const activityMatch = (notes ?? "").match(/activity:\s*(.+)/i);
+  const activity = activityMatch?.[1]?.trim();
+
+  // Extract time hint from notes (e.g. "in 2 hours", "in 30 minutes")
+  const timeMatch = (notes ?? "").match(/in (\d+) (hour|minute|min)/i);
+  const timeHint = timeMatch ? `${timeMatch[1]} ${timeMatch[2]}` : null;
+
+  // Has rich previous call context — reference it specifically
+  if (combinedContext.trim().length > 50) {
+    if (activity) {
+      return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "baad mein"} baat karne ko kaha tha — ${activity} ke baare mein aage baat karni thi na? Kya abhi thodi der baat ho sakti hai?`;
+    }
+    return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} baad` : "baad mein"} call karne ko kaha tha — ${insLabel} ke baare mein humari baat adhoori reh gayi thi. Kya abhi thodi der baat ho sakti hai?`;
+  }
+
+  // No rich context — warm generic but still better than the fixed line
+  return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
 }
 
 /**
