@@ -56,7 +56,7 @@ export async function analyzeCompliance(
   const userMessage = `TRANSCRIPT:\n${content}\n\nSUMMARY:\n${summary || "Not available"}`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: "gpt-4o-mini",
     max_completion_tokens: 2048,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
