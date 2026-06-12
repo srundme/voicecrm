@@ -177,4 +177,127 @@ router.post("/bolna-tool/transfer-call", async (req: Request, res: Response): Pr
   }
 });
 
+/**
+ * POST /bolna-tool/refer-call
+ * Called by Bolna when the caller says "talk to my wife/husband/family".
+ * Collects the referred person's number, creates a lead for them, and
+ * schedules an immediate follow-up call with full referral context.
+ */
+router.post("/bolna-tool/refer-call", async (req: Request, res: Response): Promise<void> => {
+  if (!(await authorizeToolRequest(req))) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const {
+    referred_phone,
+    referred_name,
+    relationship,
+    caller_name,
+    insurance_type,
+    execution_id,
+  } = req.body as {
+    referred_phone?: string;
+    referred_name?: string;
+    relationship?: string;
+    caller_name?: string;
+    insurance_type?: string;
+    execution_id?: string;
+  };
+
+  if (!referred_phone) {
+    res.status(400).json({ error: "referred_phone is required" });
+    return;
+  }
+
+  try {
+    const normalized = normalizePhone(referred_phone);
+    if (normalized.length !== 10) {
+      res.status(400).json({ error: "Invalid phone number" });
+      return;
+    }
+
+    // Resolve agent from the original call
+    let agentId: string | null = null;
+    let resolvedCallerName = caller_name ?? "";
+    let resolvedInsurance = insurance_type ?? "";
+
+    if (execution_id) {
+      const [origCall] = await db
+        .select({
+          bolna_agent_id: callLogsTable.bolna_agent_id,
+          memory_injected: callLogsTable.memory_injected,
+        })
+        .from(callLogsTable)
+        .where(eq(callLogsTable.bolna_execution_id, execution_id))
+        .limit(1);
+
+      if (origCall) {
+        agentId = origCall.bolna_agent_id;
+        const mem = origCall.memory_injected as Record<string, string> | null;
+        resolvedCallerName = resolvedCallerName || mem?.["user_name"] || mem?.["name"] || "";
+        resolvedInsurance = resolvedInsurance || mem?.["insurance_type"] || "";
+      }
+    }
+
+    // Find or create a lead for the referred person
+    const [existing] = await db
+      .select({ id: leadsTable.id, bolna_agent_id_unused: leadsTable.id })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, normalized)))
+      .limit(1);
+
+    let leadId: string;
+    if (existing) {
+      leadId = existing.id;
+    } else {
+      const [created] = await db
+        .insert(leadsTable)
+        .values({
+          org_id: DEFAULT_ORG_ID,
+          full_name: referred_name || `${resolvedCallerName ? `${relationship || "Family"} of ${resolvedCallerName}` : "Referred Contact"}`,
+          phone: normalized,
+          insurance_type: resolvedInsurance || null,
+          stage: "NEW",
+          source: "referral",
+          notes: `Referred by ${resolvedCallerName || "a caller"} (${relationship || "family member"})`,
+        })
+        .returning();
+      leadId = created!.id;
+    }
+
+    // Build referral notes for the opening line
+    const relLabel = relationship || "pati/patni";
+    const notes = `Referral | referred_by: ${resolvedCallerName} | relationship: ${relLabel} | insurance_type: ${resolvedInsurance}`;
+
+    // Schedule the referral call 3 minutes from now (gives current call time to end)
+    const scheduledAt = new Date(Date.now() + 3 * 60 * 1000);
+
+    await db.insert(followUpsTable).values({
+      org_id: DEFAULT_ORG_ID,
+      lead_id: leadId,
+      type: "REFERRAL",
+      scheduled_at: scheduledAt,
+      bolna_agent_id: agentId ?? "",
+      notes,
+      status: "PENDING",
+    });
+
+    logger.info(
+      { leadId, normalized, scheduledAt },
+      "bolna-tool: referral call scheduled",
+    );
+
+    res.json({
+      success: true,
+      lead_id: leadId,
+      scheduled_at: scheduledAt.toISOString(),
+      message: `I will call ${referred_name || "them"} in 3 minutes.`,
+    });
+  } catch (err) {
+    logger.error({ err }, "bolna-tool refer-call failed");
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
 export default router;
