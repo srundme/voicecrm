@@ -91,27 +91,27 @@ router.post("/bolna-tool/collect-phone", async (req: Request, res: Response): Pr
   const accumulated = prev + parsed;
 
   if (accumulated.length > 10) {
-    // Too many digits — keep only first 10, likely caller restarted
-    // Try just the new chunk alone
-    if (parsed.length === 10) {
-      phoneSessionMap.set(sessionKey, parsed);
-      const spaced = parsed.split("").join(" ");
+    // Too many digits — caller likely restarted. Keep only the latest chunk
+    // and restart from there.
+    const fresh = parsed.slice(0, 10);
+    phoneSessionMap.set(sessionKey, fresh);
+    if (fresh.length === 10) {
+      const spaced = fresh.split("").join(" ");
       res.json({
         status: "complete",
-        number: parsed,
+        number: fresh,
         spaced,
         say: `Main confirm karti hoon: ${spaced}. Kya yeh sahi hai?`,
       });
-      return;
+    } else {
+      const remaining = 10 - fresh.length;
+      res.json({
+        status: "collecting",
+        collected: fresh.length,
+        remaining,
+        say: `Theek hai, phir se note kar rahi hoon. Abhi tak ${fresh.length} digits: ${fresh.split("").join(" ")}. ${remaining} aur chahiye.`,
+      });
     }
-    // Reset and start fresh with what was just said
-    phoneSessionMap.set(sessionKey, parsed);
-    res.json({
-      status: "collecting",
-      collected: parsed.length,
-      remaining: 10 - parsed.length,
-      say: `Achha, main phir se note kar rahi hoon. Abhi tak: ${parsed.split("").join(" ")}. Baaki digits batayein.`,
-    });
     return;
   }
 
