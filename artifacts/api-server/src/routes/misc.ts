@@ -7,7 +7,7 @@ import {
   webhookLogsTable,
 } from "@workspace/db";
 import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
-import { normalizePhone } from "../lib/phone";
+import { normalizePhone, isValidIndianMobile } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
 import { triggerCall, startPolling, maybeScheduleCallback, isProperCallEnding, scheduleDropRetry } from "../lib/call-engine";
@@ -122,8 +122,8 @@ async function ingestLead(opts: {
     return { ok: false, message: "Missing name or phone" };
   }
   const phone = normalizePhone(opts.phone);
-  if (phone.length !== 10) {
-    return { ok: false, message: "Invalid phone" };
+  if (!isValidIndianMobile(phone)) {
+    return { ok: false, message: "Invalid Indian mobile number" };
   }
   const existing = await db
     .select({ id: leadsTable.id })
