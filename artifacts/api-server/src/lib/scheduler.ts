@@ -195,6 +195,16 @@ async function processFollowUp(
     return;
   }
 
+  // Skip DND leads and DO_NOT_CALL stage — no outbound calls allowed
+  if (lead.is_dnd || lead.stage === "DO_NOT_CALL") {
+    await db
+      .update(followUpsTable)
+      .set({ status: "SKIPPED" })
+      .where(eq(followUpsTable.id, followUp.id));
+    logger.info({ leadId: lead.id, followUpId: followUp.id }, "Skipped follow-up: lead is DND");
+    return;
+  }
+
   // Build extra variables depending on follow-up type
   const extraVars =
     followUp.type === "CALLBACK_REQUESTED"
