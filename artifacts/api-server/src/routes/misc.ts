@@ -60,6 +60,7 @@ function resolvePhone(req: Request): string | null {
     body["phone"] ??
     body["recipient_phone_number"] ??
     body["caller"] ??
+    req.query["contact_number"] ??   // Bolna inbound agent sends this
     req.query["phone"];
   if (!candidate) return null;
   return normalizePhone(String(candidate));
