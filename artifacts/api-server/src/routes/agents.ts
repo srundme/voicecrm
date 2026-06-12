@@ -13,12 +13,18 @@ import { triggerCall } from "../lib/call-engine";
 
 const router: IRouter = Router();
 
+const ALLOWED_AGENT_IDS = new Set([
+  "41cb39b0-92e0-49b4-af8b-4ec238fb798a",
+  "f713c97f-daf6-42cc-ba96-87c4d0374c37",
+]);
+
 router.get("/agents", async (_req, res): Promise<void> => {
   const result = await bolna.listAgents();
   if (!result.success) {
     res.json({ success: false, error: result.error, data: [] });
     return;
   }
+  result.data = result.data.filter((a) => ALLOWED_AGENT_IDS.has(a.id));
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
   const todays = await db
