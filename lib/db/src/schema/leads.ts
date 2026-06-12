@@ -4,6 +4,7 @@ import {
   text,
   integer,
   bigint,
+  boolean,
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
@@ -47,6 +48,7 @@ export const leadsTable = pgTable(
     assigned_to: text("assigned_to"),
     notes: text("notes"),
     tags: text("tags").array().notNull().default([]),
+    is_dnd: boolean("is_dnd").notNull().default(false),
     last_contacted_at: timestamp("last_contacted_at", { withTimezone: true }),
     next_followup_at: timestamp("next_followup_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true })
