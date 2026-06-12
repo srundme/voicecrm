@@ -99,8 +99,46 @@ function asArray(data: unknown): Record<string, unknown>[] {
 
 function str(v: unknown): string | null {
   if (v == null) return null;
-  if (typeof v === "object") return JSON.stringify(v);
+  if (typeof v === "string") return v;
+  if (typeof v === "object") return extractSummaryText(v as Record<string, unknown>);
   return String(v);
+}
+
+/**
+ * Bolna returns summary as a deeply-nested JSON object:
+ * {"General":{"Call Summary":{"subjective":"...","objective":"..."}}}
+ * This walks the tree and returns the first non-empty string value found
+ * under keys like "subjective", "summary", "text", "description" — or
+ * falls back to the longest string value anywhere in the object.
+ */
+function extractSummaryText(obj: unknown, depth = 0): string | null {
+  if (obj == null) return null;
+  if (typeof obj === "string") return obj.trim() || null;
+  if (typeof obj !== "object" || depth > 6) return null;
+
+  const PREFERRED = ["subjective", "summary", "text", "description", "content"];
+  const rec = obj as Record<string, unknown>;
+
+  // First pass: preferred keys
+  for (const key of PREFERRED) {
+    const val = rec[key];
+    if (typeof val === "string" && val.trim().length > 10) return val.trim();
+  }
+
+  // Second pass: recurse into object values, collect all strings
+  const strings: string[] = [];
+  for (const val of Object.values(rec)) {
+    if (typeof val === "string" && val.trim().length > 10) {
+      strings.push(val.trim());
+    } else if (typeof val === "object" && val !== null) {
+      const nested = extractSummaryText(val, depth + 1);
+      if (nested) strings.push(nested);
+    }
+  }
+
+  // Return the longest string found (most likely the real summary)
+  if (strings.length === 0) return null;
+  return strings.reduce((a, b) => (a.length >= b.length ? a : b));
 }
 
 export const bolna = {
