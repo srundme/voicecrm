@@ -13,6 +13,7 @@ import leadSourcesRouter from "./lead-sources";
 import teamRouter from "./team";
 import miscRouter from "./misc";
 import campaignsRouter from "./campaigns";
+import bolnaToolRouter from "./bolna-tool";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(leadSourcesRouter);
 router.use(teamRouter);
 router.use(miscRouter);
 router.use(campaignsRouter);
+router.use(bolnaToolRouter);
 
 export default router;
