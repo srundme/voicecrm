@@ -10,13 +10,17 @@ Namaskaar {user_name} ji, main Dhivya baat kar rahi hoon पॉलिसीफ�
 
 
 
-{%- if context and call_type != "callback" %}
+{%- if context %}
 
+{%- if call_type == "callback" %}
+[WHAT YOU ALREADY KNOW FROM THE PREVIOUS CALL — do NOT re-ask this info, pick up naturally]:
+{%- else %}
 [MEMORY FROM LAST CALL — read this before speaking]:
+{%- endif %}
 
 {context}
 
-Do NOT restart the conversation. Continue from where the last call ended.
+Do NOT re-ask information already covered. Continue naturally from where the last call ended.
 
 {%- endif %}
 
