@@ -269,6 +269,8 @@ export async function triggerCall(opts: {
   // Bolna agent opens with the right memory/opening line for this contact.
   const context = await buildCallContext(phone);
   const variables = { ...context, ...(opts.variables ?? {}) };
+  // Use the merged call_type (callbackVars may override context.call_type to "callback")
+  const resolvedCallType = (variables.call_type as string) ?? context.call_type;
 
   const started = await bolna.startCall({
     agentId: opts.agentId,
@@ -296,7 +298,7 @@ export async function triggerCall(opts: {
       direction: "OUTBOUND",
       phone_number: phone,
       status: "INITIATED",
-      call_type: opts.retryOfCallId ? "drop_retry" : context.call_type,
+      call_type: opts.retryOfCallId ? "drop_retry" : resolvedCallType,
       memory_injected: variables,
       retry_of_call_id: opts.retryOfCallId ?? null,
     })
