@@ -18,4 +18,5 @@ export const LeadStage = {
   RENEWAL_DUE: 'RENEWAL_DUE',
   LOST: 'LOST',
   DO_NOT_CALL: 'DO_NOT_CALL',
+  COLD: 'COLD',
 } as const;
