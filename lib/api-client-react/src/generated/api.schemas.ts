@@ -152,6 +152,8 @@ export interface ApiConfig {
   context_api_bearer_token: string;
   /** @nullable */
   monthly_checkin_agent_id?: string | null;
+  /** @nullable */
+  human_agent_phone?: string | null;
   sms_on_lead_created?: boolean;
   sms_on_call_scheduled?: boolean;
   email_renewal_reminders?: boolean;
@@ -169,6 +171,7 @@ export interface ApiConfigUpdate {
   meta_ads_access_token?: string;
   meta_ads_account_id?: string;
   monthly_checkin_agent_id?: string;
+  human_agent_phone?: string;
   sms_on_lead_created?: boolean;
   sms_on_call_scheduled?: boolean;
   email_renewal_reminders?: boolean;
@@ -230,6 +233,7 @@ export interface Lead {
   /** @nullable */
   notes?: string | null;
   tags: string[];
+  is_dnd?: boolean;
   /** @nullable */
   last_contacted_at?: string | null;
   /** @nullable */
@@ -439,6 +443,7 @@ export interface LeadUpdate {
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  is_dnd?: boolean;
   /** @nullable */
   next_followup_at?: string | null;
 }
