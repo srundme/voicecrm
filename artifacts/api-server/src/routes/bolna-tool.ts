@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db, leadsTable, callLogsTable, followUpsTable } from "@workspace/db";
 import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
-import { normalizePhone } from "../lib/phone";
+import { normalizePhone, isValidIndianMobile } from "../lib/phone";
 import { sendSMS } from "../lib/brevo";
 import { logger } from "../lib/logger";
 
@@ -456,8 +456,8 @@ router.post("/bolna-tool/refer-call", async (req: Request, res: Response): Promi
 
   try {
     const normalized = normalizePhone(referred_phone);
-    if (normalized.length !== 10) {
-      res.status(400).json({ error: "Invalid phone number" });
+    if (!isValidIndianMobile(normalized)) {
+      res.status(400).json({ error: "Invalid Indian mobile number" });
       return;
     }
 
