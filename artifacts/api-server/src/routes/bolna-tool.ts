@@ -8,6 +8,135 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+// ── In-memory phone digit accumulator (per call session) ─────────────────────
+// Keyed by execution_id. Cleared when number is complete or call ends.
+const phoneSessionMap = new Map<string, string>();
+
+/**
+ * Parse a spoken digit chunk into a digit string.
+ * Handles: "double 8" → "88", "triple 0" → "000", digit words, plain digits.
+ */
+function parseSpokenDigits(raw: string): string {
+  const r = raw.toLowerCase().trim();
+
+  // Expand "double X" → XX and "triple X" → XXX
+  const expanded = r
+    .replace(/double\s+(\w+)/g, (_m, d) => `${d}${d}`)
+    .replace(/triple\s+(\w+)/g, (_m, d) => `${d}${d}${d}`);
+
+  const wordMap: Record<string, string> = {
+    zero: "0", one: "1", two: "2", three: "3", four: "4",
+    five: "5", six: "6", seven: "7", eight: "8", nine: "9",
+    oh: "0", o: "0",
+    // Hindi transliterations
+    shunya: "0", ek: "1", do: "2", teen: "3", char: "4",
+    paanch: "5", chhe: "6", saat: "7", aath: "8", nau: "9",
+  };
+
+  // Replace each token with its digit equivalent
+  return expanded
+    .split(/[\s,]+/)
+    .map((tok) => wordMap[tok] ?? tok.replace(/\D/g, ""))
+    .join("")
+    .replace(/\D/g, ""); // strip any remaining non-digits
+}
+
+/**
+ * POST /bolna-tool/collect-phone
+ * Dhivya calls this every time the caller speaks digits.
+ * Server accumulates, returns progress, and signals when 10 digits are ready.
+ *
+ * Response shapes:
+ *   { status: "collecting", collected: 6, remaining: 4, say: "..." }
+ *   { status: "complete",   number: "8904887300", say: "...", spaced: "8 9 0 4 8 8 7 3 0 0" }
+ *   { status: "reset",      say: "..." }   ← caller said "start over"
+ */
+router.post("/bolna-tool/collect-phone", async (req: Request, res: Response): Promise<void> => {
+  if (!(await authorizeToolRequest(req))) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { execution_id, digits, reset } = req.body as {
+    execution_id?: string;
+    digits?: string;
+    reset?: boolean;
+  };
+
+  const sessionKey = execution_id ?? "default";
+
+  if (reset) {
+    phoneSessionMap.delete(sessionKey);
+    res.json({ status: "reset", say: "Theek hai, phir se batayein." });
+    return;
+  }
+
+  if (!digits) {
+    res.status(400).json({ error: "digits is required" });
+    return;
+  }
+
+  const parsed = parseSpokenDigits(digits);
+  if (!parsed) {
+    res.json({
+      status: "collecting",
+      collected: (phoneSessionMap.get(sessionKey) ?? "").length,
+      remaining: 10 - (phoneSessionMap.get(sessionKey) ?? "").length,
+      say: "Kuch samajh nahi aaya — phir se batayein?",
+    });
+    return;
+  }
+
+  const prev = phoneSessionMap.get(sessionKey) ?? "";
+  const accumulated = prev + parsed;
+
+  if (accumulated.length > 10) {
+    // Too many digits — keep only first 10, likely caller restarted
+    // Try just the new chunk alone
+    if (parsed.length === 10) {
+      phoneSessionMap.set(sessionKey, parsed);
+      const spaced = parsed.split("").join(" ");
+      res.json({
+        status: "complete",
+        number: parsed,
+        spaced,
+        say: `Main confirm karti hoon: ${spaced}. Kya yeh sahi hai?`,
+      });
+      return;
+    }
+    // Reset and start fresh with what was just said
+    phoneSessionMap.set(sessionKey, parsed);
+    res.json({
+      status: "collecting",
+      collected: parsed.length,
+      remaining: 10 - parsed.length,
+      say: `Achha, main phir se note kar rahi hoon. Abhi tak: ${parsed.split("").join(" ")}. Baaki digits batayein.`,
+    });
+    return;
+  }
+
+  phoneSessionMap.set(sessionKey, accumulated);
+
+  if (accumulated.length === 10) {
+    const spaced = accumulated.split("").join(" ");
+    res.json({
+      status: "complete",
+      number: accumulated,
+      spaced,
+      say: `Main confirm karti hoon: ${spaced}. Kya yeh sahi hai?`,
+    });
+    return;
+  }
+
+  const remaining = 10 - accumulated.length;
+  res.json({
+    status: "collecting",
+    collected: accumulated.length,
+    remaining,
+    say: `Ji, abhi tak ${accumulated.length} digits mili hain. ${remaining} aur chahiye — aage batayein.`,
+  });
+});
+
 async function authorizeToolRequest(req: Request): Promise<boolean> {
   const cfg = await ensureApiConfig();
   const auth = req.headers["authorization"] ?? "";
