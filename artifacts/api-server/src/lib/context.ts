@@ -42,8 +42,12 @@ function firstName(fullName: string): string {
  * Single source of truth for the Unified Context API (Module 5).
  * Used both by the GET/POST /context HTTP endpoint (called by Bolna) and by
  * the call orchestration engine before every outbound call.
+ *
+ * Pass isInbound=true when this is an inbound call so the callback opening
+ * line is never used — inbound callers should always get the inbound greeting,
+ * not the outbound "you asked me to call back" script.
  */
-export async function buildCallContext(rawPhone: string): Promise<CallContext> {
+export async function buildCallContext(rawPhone: string, isInbound = false): Promise<CallContext> {
   const phone = normalizePhone(rawPhone);
 
   const [lead] = await db
@@ -161,7 +165,9 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
   }
 
   // A callback was explicitly requested and is now due.
-  if (pendingCallback) {
+  // Skip this branch for inbound calls — when the customer calls us, they should
+  // always get the inbound greeting, not the outbound "you asked me to call back" script.
+  if (pendingCallback && !isInbound) {
     const callbackOpening = `${firstName(name)} ji, aapne mujhe baad mein call karne ko kaha tha — maine aapke liye kuch important dhundha tha, bas 2 minute ka kaam hai.`;
     // Build callback_reason: combined context from all recent calls.
     const reasonParts: string[] = [];
