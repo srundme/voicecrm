@@ -65,10 +65,8 @@ async function autoCallOnLead(leadId: string, phone: string): Promise<void> {
       );
     if (autos.length === 0) return;
     const auto = autos[0]!;
-    // Pick the first available Bolna agent automatically — no per-rule agent selection needed.
-    const agentsResult = await bolna.listAgents();
-    if (!agentsResult.success || agentsResult.data.length === 0) return;
-    const agentId = agentsResult.data[0]!.id;
+    const agentId = auto.bolna_agent_id;
+    if (!agentId) return; // No primary outbound agent configured yet.
     await triggerCall({
       agentId,
       phone,
