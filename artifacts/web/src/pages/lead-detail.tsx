@@ -307,7 +307,7 @@ function MarkAsSoldDialog({ lead }: { lead: LeadDetailType }) {
       insurer_name: form.insurer_name.trim(),
       policy_number: form.policy_number.trim() || undefined,
       annual_premium: form.annual_premium ? parseInt(form.annual_premium.replace(/\D/g, ""), 10) : undefined,
-      start_date: form.start_date ? new Date(form.start_date) : undefined,
+      start_date: form.start_date || undefined,
       status: "ACTIVE",
     };
     createPolicy.mutate({ data }, {
@@ -347,7 +347,7 @@ function MarkAsSoldDialog({ lead }: { lead: LeadDetailType }) {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Policy Type</Label>
-            <Select value={form.policy_type} onValueChange={(v) => update({ policy_type: v })}>
+            <Select value={form.policy_type} onValueChange={(v) => update({ policy_type: v as typeof form.policy_type })}>
               <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {["LIFE","HEALTH","MOTOR","TERM","ULIP","ENDOWMENT","ACCIDENT","TRAVEL"].map((t) => (
