@@ -44,9 +44,9 @@ export default function Settings() {
   const createAutomation = useCreateAutomation();
   const updateAutomation = useUpdateAutomation();
 
-  type RuleState = { id?: string; is_active: boolean };
+  type RuleState = { id?: string; is_active: boolean; bolna_agent_id?: string };
   const [rules, setRules] = useState<Record<string, RuleState>>({
-    AUTO_CALL_ON_LEAD: { is_active: false },
+    AUTO_CALL_ON_LEAD: { is_active: false, bolna_agent_id: "" },
     RETRY_ON_DROP: { is_active: false },
   });
   const [savingRules, setSavingRules] = useState(false);
@@ -56,7 +56,9 @@ export default function Settings() {
     setRules(prev => {
       const next = { ...prev };
       for (const a of automationsData) {
-        if (a.type === "AUTO_CALL_ON_LEAD" || a.type === "RETRY_ON_DROP") {
+        if (a.type === "AUTO_CALL_ON_LEAD") {
+          next[a.type] = { id: a.id, is_active: a.is_active, bolna_agent_id: a.bolna_agent_id ?? "" };
+        } else if (a.type === "RETRY_ON_DROP") {
           next[a.type] = { id: a.id, is_active: a.is_active };
         }
       }
@@ -72,11 +74,15 @@ export default function Settings() {
         RETRY_ON_DROP: "Retry dropped calls",
       };
       for (const [type, rule] of Object.entries(rules)) {
+        const updateData: Record<string, unknown> = { is_active: rule.is_active };
+        if (type === "AUTO_CALL_ON_LEAD" && rule.bolna_agent_id !== undefined) {
+          updateData.bolna_agent_id = rule.bolna_agent_id;
+        }
         if (rule.id) {
-          await updateAutomation.mutateAsync({ id: rule.id, data: { is_active: rule.is_active } });
+          await updateAutomation.mutateAsync({ id: rule.id, data: updateData as Parameters<typeof updateAutomation.mutateAsync>[0]["data"] });
         } else {
           await createAutomation.mutateAsync({
-            data: { name: NAMES[type] || type, type: type as AutomationType, bolna_agent_id: "", is_active: rule.is_active },
+            data: { name: NAMES[type] || type, type: type as AutomationType, bolna_agent_id: (updateData.bolna_agent_id as string) || "", is_active: rule.is_active },
           });
         }
       }
@@ -309,6 +315,27 @@ export default function Settings() {
                 </div>
               );
             })}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-indigo-600" />
+                <Label className="text-sm font-medium">Primary outbound agent</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">The agent that calls new leads automatically (auto-call &amp; retry).</p>
+              <Select
+                value={rules["AUTO_CALL_ON_LEAD"]?.bolna_agent_id || "__none__"}
+                onValueChange={(v) => setRules(r => ({ ...r, AUTO_CALL_ON_LEAD: { ...r["AUTO_CALL_ON_LEAD"]!, bolna_agent_id: v === "__none__" ? "" : v } }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select an agent..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No agent selected</SelectItem>
+                  {agentsData?.data?.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="rounded-lg border p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Bot className="w-4 h-4 text-purple-600" />
