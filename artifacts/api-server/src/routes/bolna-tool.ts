@@ -12,6 +12,24 @@ const router: IRouter = Router();
 // Keyed by execution_id. Cleared when number is complete or call ends.
 const phoneSessionMap = new Map<string, string>();
 
+// ── In-memory referral registry ───────────────────────────────────────────────
+// Husband registers wife's name during his call. Wife calls in later and
+// Dhivya recognises her by name. Entries expire after 24 hours.
+interface PendingReferral {
+  wife_name: string;
+  husband_name: string;
+  insurance_type: string;
+  registered_at: number;
+}
+const referralRegistry = new Map<string, PendingReferral>(); // key = normalised wife name
+
+function cleanExpiredReferrals(): void {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [k, v] of referralRegistry) {
+    if (v.registered_at < cutoff) referralRegistry.delete(k);
+  }
+}
+
 /**
  * Parse a spoken digit chunk into a digit string.
  * Handles: "double 8" → "88", "triple 0" → "000", digit words, plain digits.
@@ -134,6 +152,103 @@ router.post("/bolna-tool/collect-phone", async (req: Request, res: Response): Pr
     collected: accumulated.length,
     remaining,
     say: `Ji, abhi tak ${accumulated.length} digits mili hain. ${remaining} aur chahiye — aage batayein.`,
+  });
+});
+
+/**
+ * POST /bolna-tool/register-referral
+ * Called during the husband's call when he says "I'll give your number to my wife".
+ * Dhivya collects the wife's name and stores it so Dhivya can recognise her when
+ * she calls in.
+ */
+router.post("/bolna-tool/register-referral", async (req: Request, res: Response): Promise<void> => {
+  if (!(await authorizeToolRequest(req))) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { wife_name, husband_name, insurance_type } = req.body as {
+    wife_name?: string;
+    husband_name?: string;
+    insurance_type?: string;
+  };
+
+  if (!wife_name) {
+    res.status(400).json({ error: "wife_name is required" });
+    return;
+  }
+
+  cleanExpiredReferrals();
+
+  const key = wife_name.trim().toLowerCase();
+  referralRegistry.set(key, {
+    wife_name: wife_name.trim(),
+    husband_name: husband_name?.trim() ?? "",
+    insurance_type: insurance_type?.trim() ?? "",
+    registered_at: Date.now(),
+  });
+
+  logger.info({ wife_name, husband_name }, "bolna-tool: referral registered, expecting inbound call");
+
+  res.json({
+    success: true,
+    say: `Bilkul! ${wife_name.trim()} ji ko mera number de dijiye — jab chahe call kar sakti hain. Main unka wait karungi!`,
+  });
+});
+
+/**
+ * POST /bolna-tool/check-referral
+ * Called at the START of an inbound_new call after the caller gives their name.
+ * Dhivya checks if this caller was registered as a referral by their husband.
+ */
+router.post("/bolna-tool/check-referral", async (req: Request, res: Response): Promise<void> => {
+  if (!(await authorizeToolRequest(req))) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { caller_name } = req.body as { caller_name?: string };
+
+  if (!caller_name) {
+    res.status(400).json({ error: "caller_name is required" });
+    return;
+  }
+
+  cleanExpiredReferrals();
+
+  const key = caller_name.trim().toLowerCase();
+
+  // Try exact match first, then partial (handles "Anusha" matching "Anusha Devi")
+  let match = referralRegistry.get(key);
+  if (!match) {
+    for (const [k, v] of referralRegistry) {
+      if (k.includes(key) || key.includes(k)) {
+        match = v;
+        referralRegistry.delete(k);
+        break;
+      }
+    }
+  } else {
+    referralRegistry.delete(key);
+  }
+
+  if (!match) {
+    res.json({
+      match: false,
+      say: "",
+    });
+    return;
+  }
+
+  const insPart = match.insurance_type ? `${match.insurance_type} insurance` : "insurance";
+  const husbandPart = match.husband_name ? `${match.husband_name} ji` : "aapke ghar se";
+  const callerFirst = match.wife_name.split(/\s+/)[0];
+
+  res.json({
+    match: true,
+    husband_name: match.husband_name,
+    insurance_type: match.insurance_type,
+    say: `Ahh, ${callerFirst} ji! ${husbandPart} ne bataya tha ki aap call karengi. ${insPart} ke baare mein baat karni thi na — bilkul sahi time par call kiya. Kya ab discuss kar sakte hain?`,
   });
 });
 
