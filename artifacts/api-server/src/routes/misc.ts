@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, desc } from "drizzle-orm";
 import {
   db,
   leadsTable,
@@ -352,7 +352,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
     .from(callLogsTable)
     .where(eq(callLogsTable.bolna_execution_id, executionId));
 
-  // Call was made directly from Bolna (not via VoiceCRM) — create the log now.
+  // Call was made directly from Bolna (not via VoiceCRM) — find or create the log now.
   if (!row) {
     const telephonyData = (body["telephony_data"] ?? {}) as Record<string, unknown>;
     const rawDir = String(body["direction"] ?? telephonyData["direction"] ?? "outbound").toUpperCase();
@@ -374,7 +374,7 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
           body["to"] ?? body["recipient_phone_number"] ?? body["phone_number"] ?? body["phone"] ??
           (body["context_details"] as Record<string, unknown> | null)?.["recipient_phone_number"] ?? "",
         );
-    logger.info({ rawPhone, direction }, "Bolna webhook: phone extraction");
+    logger.info({ rawPhone, direction, executionId }, "Bolna webhook: phone extraction");
     const phone = normalizePhone(rawPhone);
     const agentId = String(body["agent_id"] ?? body["bolna_agent_id"] ?? "");
     const rawStatus = String(body["status"] ?? "completed");
@@ -385,30 +385,67 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
       return;
     }
 
-    // Try to match a lead by phone.
-    const [lead] = phone.length === 10
-      ? await db.select({ id: leadsTable.id }).from(leadsTable)
-          .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)))
-          .limit(1)
-      : [];
+    // ── For inbound: claim the pre-created INITIATED row (created at context time) ──
+    // The context endpoint pre-creates the row without an execution_id because Bolna
+    // doesn't send it to the context API. We match by phone + direction + INITIATED
+    // within the last 2 hours and stamp the real execution_id onto it.
+    if (direction === "INBOUND" && phone.length === 10) {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const [preCreated] = await db
+        .select()
+        .from(callLogsTable)
+        .where(
+          and(
+            eq(callLogsTable.org_id, DEFAULT_ORG_ID),
+            eq(callLogsTable.phone_number, phone),
+            eq(callLogsTable.direction, "INBOUND"),
+            eq(callLogsTable.status, "INITIATED"),
+            gte(callLogsTable.created_at, twoHoursAgo),
+          ),
+        )
+        .orderBy(desc(callLogsTable.created_at))
+        .limit(1);
 
-    const [created] = await db.insert(callLogsTable).values({
-      org_id: DEFAULT_ORG_ID,
-      lead_id: lead?.id ?? null,
-      bolna_execution_id: executionId,
-      bolna_agent_id: agentId,
-      direction,
-      phone_number: phone || rawPhone,
-      status: mapBolnaStatusToCallStatus(rawStatus),
-      call_type: direction === "INBOUND" ? "inbound_new" : "manual_bolna",
-    }).returning();
+      if (preCreated) {
+        // Stamp the real execution_id so subsequent polling/webhooks can find it
+        const [claimed] = await db
+          .update(callLogsTable)
+          .set({ bolna_execution_id: executionId, bolna_agent_id: agentId })
+          .where(eq(callLogsTable.id, preCreated.id))
+          .returning();
+        if (claimed) {
+          row = claimed;
+          logger.info({ executionId, rowId: claimed.id }, "Bolna webhook: claimed pre-created inbound row");
+        }
+      }
+    }
 
-    if (created) {
-      logger.info({ executionId, leadId: lead?.id ?? null }, "Bolna webhook: created call log for external call");
-      row = created;
-    } else {
-      res.json({ received: true });
-      return;
+    // If we still don't have a row, create one now (fallback for non-pre-created calls)
+    if (!row) {
+      const [lead] = phone.length === 10
+        ? await db.select({ id: leadsTable.id }).from(leadsTable)
+            .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, phone)))
+            .limit(1)
+        : [];
+
+      const [created] = await db.insert(callLogsTable).values({
+        org_id: DEFAULT_ORG_ID,
+        lead_id: lead?.id ?? null,
+        bolna_execution_id: executionId,
+        bolna_agent_id: agentId,
+        direction,
+        phone_number: phone || rawPhone,
+        status: mapBolnaStatusToCallStatus(rawStatus),
+        call_type: direction === "INBOUND" ? "inbound_new" : "manual_bolna",
+      }).returning();
+
+      if (created) {
+        logger.info({ executionId, leadId: lead?.id ?? null }, "Bolna webhook: created call log for external call");
+        row = created;
+      } else {
+        res.json({ received: true });
+        return;
+      }
     }
   }
 
