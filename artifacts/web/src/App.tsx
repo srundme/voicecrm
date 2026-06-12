@@ -19,6 +19,7 @@ import LeadSources from "@/pages/lead-sources";
 import Settings from "@/pages/settings";
 import Team from "@/pages/team";
 import Campaigns from "@/pages/campaigns";
+import Automations from "@/pages/automations";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -49,6 +50,7 @@ function AppRouter() {
         <Route path="/settings" component={Settings} />
         <Route path="/team" component={Team} />
         <Route path="/campaigns" component={Campaigns} />
+        <Route path="/automations" component={Automations} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
