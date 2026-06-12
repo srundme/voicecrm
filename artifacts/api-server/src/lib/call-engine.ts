@@ -151,6 +151,35 @@ export function parseCallbackIntent(
   };
 }
 
+/**
+ * Extract the activity/situation the caller mentioned (e.g. "driving", "meeting")
+ * from the user-only transcript so the callback opening can reference it.
+ * Returns a short English phrase or null if nothing specific was mentioned.
+ */
+export function extractCallerActivity(userOnlyTranscript: string): string | null {
+  const t = userOnlyTranscript.toLowerCase();
+
+  // Map of patterns → normalised activity label
+  const ACTIVITIES: Array<[RegExp, string]> = [
+    [/\b(driv(ing|e)|drive kar)\b/, "driving"],
+    [/\b(meeting|baithak|conference)\b/, "in a meeting"],
+    [/\b(on a call|call pe|call mein)\b/, "on a call"],
+    [/\b(eating|khana|lunch|dinner|breakfast|khaana)\b/, "eating"],
+    [/\b(busy|vyast)\b/, "busy"],
+    [/\b(sleeping|so raha|so rahi)\b/, "sleeping"],
+    [/\b(office|kaam|work)\b/, "at work"],
+    [/\b(gym|exercise|workout)\b/, "at the gym"],
+    [/\b(school|college|class|padhai)\b/, "in class"],
+    [/\b(travel(ling|ing)?|trip|safar)\b/, "travelling"],
+    [/\b(outside|bahar|out)\b/, "outside"],
+  ];
+
+  for (const [rx, label] of ACTIVITIES) {
+    if (rx.test(t)) return label;
+  }
+  return null;
+}
+
 export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
   try {
     // If lead_id is missing (e.g. call made directly from Bolna), try to find
@@ -190,6 +219,12 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
     const intent = parseCallbackIntent(text, call.ended_at ?? new Date());
     if (!intent) return;
 
+    // Extract what the caller was doing so the callback opening can reference it
+    const activity = extractCallerActivity(userOnlyTranscript);
+    const notesWithActivity = activity
+      ? `${intent.notes} | activity: ${activity}`
+      : intent.notes;
+
     // Dedup: only skip if a PENDING follow-up already exists for this exact call
     // (guards against Bolna double-firing the same webhook within seconds).
     // Do NOT skip if status is IN_PROGRESS or COMPLETED — those mean the
@@ -214,7 +249,7 @@ export async function maybeScheduleCallback(call: CallLogRow): Promise<void> {
       scheduled_at: intent.scheduledAt,
       bolna_agent_id: call.bolna_agent_id,
       call_log_id: call.id,
-      notes: intent.notes,
+      notes: notesWithActivity,
       status: "PENDING",
     });
 
