@@ -3,9 +3,13 @@ import { eq } from "drizzle-orm";
 import { db, callLogsTable, type CallLogRow, type ComplianceData, type ComplianceCheckResult } from "@workspace/db";
 import { logger } from "./logger";
 
+// Replit dev uses AI_INTEGRATIONS_* proxy; Railway production uses OPENAI_API_KEY directly.
 const openai = new OpenAI({
-  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
-  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ?? "dummy",
+  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
+  apiKey:
+    process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ??
+    process.env["OPENAI_API_KEY"] ??
+    "dummy",
 });
 
 const PASS_THRESHOLD = 80;
@@ -103,11 +107,23 @@ export async function analyzeCompliance(
   };
 }
 
-export async function runComplianceCheck(call: CallLogRow): Promise<void> {
+export async function runComplianceCheck(call: CallLogRow, retryCount = 0): Promise<void> {
+  // Bolna transcribes async — if the transcript isn't ready yet, retry after 45s.
   if (!call.transcript || call.transcript.trim().length < 50) {
+    if (retryCount < 3) {
+      const delayMs = (retryCount + 1) * 45_000; // 45s, 90s, 135s
+      logger.info({ callId: call.id, retryCount, delayMs }, "Compliance: transcript not ready, will retry");
+      setTimeout(async () => {
+        const [fresh] = await db.select().from(callLogsTable).where(eq(callLogsTable.id, call.id)).limit(1);
+        if (fresh) void runComplianceCheck(fresh, retryCount + 1);
+      }, delayMs);
+      return;
+    }
+    // After 3 retries still no transcript — mark as skipped (genuinely short call)
     await db.update(callLogsTable)
       .set({ compliance_status: "SKIPPED" })
       .where(eq(callLogsTable.id, call.id));
+    logger.info({ callId: call.id }, "Compliance: skipped — transcript too short after retries");
     return;
   }
 
@@ -131,9 +147,9 @@ export async function runComplianceCheck(call: CallLogRow): Promise<void> {
       "Compliance check completed",
     );
   } catch (err) {
-    logger.error({ err, callId: call.id }, "Compliance check failed");
+    logger.error({ err, callId: call.id }, "Compliance check failed — check OPENAI_API_KEY in Railway env vars");
     await db.update(callLogsTable)
-      .set({ compliance_status: "SKIPPED" })
+      .set({ compliance_status: "FAILED" })
       .where(eq(callLogsTable.id, call.id));
   }
 }
