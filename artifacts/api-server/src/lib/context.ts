@@ -72,12 +72,25 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
 
   const now = Date.now();
 
-  const [lastCall] = await db
+  // Fetch last 5 calls so we can build a combined summary across multiple
+  // short calls (e.g. a 10-min callback request) that individually may lack
+  // the rich context from earlier substantive conversations.
+  const recentCalls = await db
     .select()
     .from(callLogsTable)
     .where(eq(callLogsTable.lead_id, lead.id))
     .orderBy(desc(callLogsTable.created_at))
-    .limit(1);
+    .limit(5);
+
+  const lastCall = recentCalls[0] ?? null;
+
+  // Build combined context from all recent calls that have a meaningful summary
+  // (>30 chars). Most-recent first so the agent sees the freshest info at the top.
+  const SUMMARY_MIN_LEN = 30;
+  const combinedContext = recentCalls
+    .filter((c) => (c.summary ?? "").trim().length >= SUMMARY_MIN_LEN)
+    .map((c) => c.summary!.trim())
+    .join("\n---\n");
 
   // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
   // before triggerCall runs) are still detected here and get the right call_type + context.
@@ -105,7 +118,6 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
   const gender = (lead.gender ?? "").toLowerCase();
   const city = lead.city ?? "";
   const insuranceType = (lead.insurance_type ?? "").toLowerCase();
-  const lastSummary = lastCall?.summary ?? "";
   const lastExecId = lastCall?.bolna_execution_id ?? "";
 
   const base = {
@@ -141,30 +153,29 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
     return {
       ...base,
       call_type: "drop_retry",
-      context: lastSummary,
+      context: combinedContext,
       opening_line: `${firstName(name)} ji, maafi chahti hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karti hoon jahan hamne baat chodi thi.`,
       previous_execution_id: lastExecId,
-      previous_summary: lastSummary,
+      previous_summary: combinedContext,
     };
   }
 
   // A callback was explicitly requested and is now due.
   if (pendingCallback) {
     const callbackOpening = `${firstName(name)} ji, aapne mujhe baad mein call karne ko kaha tha — maine aapke liye kuch important dhundha tha, bas 2 minute ka kaam hai.`;
-    // Build callback_reason: include previous summary so agent has full context.
+    // Build callback_reason: combined context from all recent calls.
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
-    if (lastSummary) reasonParts.push(`Previous call summary: ${lastSummary}`);
+    if (combinedContext) reasonParts.push(`What you already know from previous calls:\n${combinedContext}`);
     return {
       ...base,
       call_type: "callback",
-      // Pass lastSummary as context so Dhivya has full memory of the previous call.
-      context: lastSummary,
+      context: combinedContext,
       opening_line: callbackOpening,
       callback_opening: callbackOpening,
       callback_reason: reasonParts.join("\n\n"),
       previous_execution_id: lastExecId,
-      previous_summary: lastSummary,
+      previous_summary: combinedContext,
     };
   }
 
@@ -173,7 +184,7 @@ export async function buildCallContext(rawPhone: string): Promise<CallContext> {
   return {
     ...base,
     call_type: "inbound_known",
-    context: lastSummary,
+    context: combinedContext,
     opening_line: first
       ? `Namaskaar ${first} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`
       : `Namaskaar, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`,
