@@ -10,7 +10,7 @@ import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone } from "../lib/phone";
 import { buildCallContext } from "../lib/context";
 import { liveFeed, type LiveFeedEvent } from "../lib/events";
-import { triggerCall, startPolling, maybeScheduleCallback, isProperCallEnding } from "../lib/call-engine";
+import { triggerCall, startPolling, maybeScheduleCallback, isProperCallEnding, scheduleDropRetry } from "../lib/call-engine";
 import { autoUpdateLeadStage } from "../lib/stage-classifier";
 import { runComplianceCheck } from "../lib/compliance";
 import {
@@ -409,6 +409,9 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
       void runComplianceCheck(updated);
       void autoUpdateLeadStage(updated);
     }
+    if (updated && isEnded && dropDetected) {
+      void scheduleDropRetry(updated);
+    }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
       emitCallUpdate(await serializeCallLog(updated));
@@ -437,6 +440,9 @@ router.post("/webhooks/bolna", async (req, res): Promise<void> => {
       void maybeScheduleCallback(updated);
       void runComplianceCheck(updated);
       void autoUpdateLeadStage(updated);
+    }
+    if (updated && dropDetected) {
+      void scheduleDropRetry(updated);
     }
     if (updated) {
       const { emitCallUpdate } = await import("../lib/events");
