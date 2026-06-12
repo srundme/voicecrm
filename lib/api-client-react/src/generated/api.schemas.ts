@@ -56,6 +56,7 @@ export const LeadStage = {
   RENEWAL_DUE: 'RENEWAL_DUE',
   LOST: 'LOST',
   DO_NOT_CALL: 'DO_NOT_CALL',
+  COLD: 'COLD',
 } as const;
 
 export type PolicyStatus = typeof PolicyStatus[keyof typeof PolicyStatus];
@@ -121,6 +122,8 @@ export const FollowUpType = {
   CALLBACK_REQUESTED: 'CALLBACK_REQUESTED',
   MANUAL: 'MANUAL',
   POLICY_ANNIVERSARY: 'POLICY_ANNIVERSARY',
+  REFERRAL: 'REFERRAL',
+  RETRY_NO_ANSWER: 'RETRY_NO_ANSWER',
 } as const;
 
 export type FollowUpStatus = typeof FollowUpStatus[keyof typeof FollowUpStatus];
