@@ -54,6 +54,12 @@ const sortColumns = {
 
 async function autoCallOnLead(leadId: string, phone: string): Promise<void> {
   try {
+    const [lead] = await db.select({ stage: leadsTable.stage, is_dnd: leadsTable.is_dnd })
+      .from(leadsTable).where(eq(leadsTable.id, leadId));
+    if (lead?.is_dnd || lead?.stage === "DO_NOT_CALL") {
+      logger.info({ leadId }, "Skipped auto-call: lead is DND");
+      return;
+    }
     const autos = await db
       .select()
       .from(automationsTable)
