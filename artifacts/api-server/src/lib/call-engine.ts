@@ -308,6 +308,16 @@ export async function triggerCall(opts: {
   // Use the merged call_type (callbackVars may override context.call_type to "callback")
   const resolvedCallType = (variables.call_type as string) ?? context.call_type;
 
+  // Resolve agent name from Bolna if not provided by the caller
+  let resolvedAgentName = opts.agentName ?? null;
+  if (!resolvedAgentName) {
+    const agentsResult = await bolna.listAgents();
+    if (agentsResult.success) {
+      resolvedAgentName =
+        agentsResult.data.find((a) => a.id === opts.agentId)?.name ?? null;
+    }
+  }
+
   const started = await bolna.startCall({
     agentId: opts.agentId,
     phone,
@@ -330,7 +340,7 @@ export async function triggerCall(opts: {
       lead_id: opts.leadId ?? null,
       bolna_execution_id: started.data.execution_id,
       bolna_agent_id: opts.agentId,
-      agent_name: opts.agentName ?? null,
+      agent_name: resolvedAgentName,
       direction: "OUTBOUND",
       phone_number: phone,
       status: "INITIATED",
