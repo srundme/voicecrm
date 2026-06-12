@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, apiConfigTable } from "@workspace/db";
+import { db, apiConfigTable, followUpsTable, callLogsTable, policiesTable, leadsTable } from "@workspace/db";
 import {
   GetApiConfigResponse,
   UpdateApiConfigBody,
@@ -109,5 +109,13 @@ router.post(
     res.json({ success: false, message: "Unknown service" });
   },
 );
+
+router.delete("/admin/reset-test-data", async (_req, res): Promise<void> => {
+  await db.delete(followUpsTable).where(eq(followUpsTable.org_id, DEFAULT_ORG_ID));
+  await db.delete(callLogsTable).where(eq(callLogsTable.org_id, DEFAULT_ORG_ID));
+  await db.delete(policiesTable).where(eq(policiesTable.org_id, DEFAULT_ORG_ID));
+  await db.delete(leadsTable).where(eq(leadsTable.org_id, DEFAULT_ORG_ID));
+  res.json({ ok: true, message: "All leads, calls, policies and follow-ups deleted." });
+});
 
 export default router;
