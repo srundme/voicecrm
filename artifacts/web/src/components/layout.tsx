@@ -12,6 +12,7 @@ import {
   Users2,
   PhoneCall,
   Megaphone,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { label: "Follow-ups",   href: "/follow-ups",   icon: CalendarDays,    color: "#fbbf24" },
   { label: "AI Agents",    href: "/agents",       icon: Bot,             color: "#a3e635" },
   { label: "Campaigns",    href: "/campaigns",    icon: Megaphone,       color: "#f472b6" },
+  { label: "Automations",  href: "/automations",  icon: Zap,             color: "#c084fc" },
   { label: "Lead Sources", href: "/lead-sources", icon: LinkIcon,        color: "#22d3ee" },
   { label: "Team",         href: "/team",         icon: Users2,          color: "#86efac" },
 ];
