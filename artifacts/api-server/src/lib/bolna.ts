@@ -98,7 +98,9 @@ function asArray(data: unknown): Record<string, unknown>[] {
 }
 
 function str(v: unknown): string | null {
-  return v == null ? null : String(v);
+  if (v == null) return null;
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
 
 export const bolna = {
