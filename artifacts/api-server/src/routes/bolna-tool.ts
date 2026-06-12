@@ -501,9 +501,9 @@ router.post("/bolna-tool/refer-call", async (req: Request, res: Response): Promi
           org_id: DEFAULT_ORG_ID,
           full_name: referred_name || `${resolvedCallerName ? `${relationship || "Family"} of ${resolvedCallerName}` : "Referred Contact"}`,
           phone: normalized,
-          insurance_type: resolvedInsurance || null,
+          insurance_type: (resolvedInsurance || null) as "LIFE" | "HEALTH" | "MOTOR" | "TERM" | "ULIP" | "ENDOWMENT" | "ACCIDENT" | "TRAVEL" | null,
           stage: "NEW",
-          source: "referral",
+          source: "REFERRAL",
           notes: `Referred by ${resolvedCallerName || "a caller"} (${relationship || "family member"})`,
         })
         .returning();
