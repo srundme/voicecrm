@@ -98,6 +98,35 @@ export function buildCallbackVars(
   };
 }
 
+/**
+ * Build Bolna variables for a REFERRAL call — when the original caller's
+ * family member / spouse is being called on their behalf.
+ * Notes format: "Referral | referred_by: Prabhu | relationship: wife | insurance_type: health"
+ */
+export function buildReferralVars(
+  notes: string | null,
+  referredName: string = "",
+): Record<string, string> {
+  const referred_by = notes?.match(/referred_by:\s*([^|]+)/i)?.[1]?.trim() ?? "";
+  const relationship = notes?.match(/relationship:\s*([^|]+)/i)?.[1]?.trim() ?? "pariwar ke member";
+  const insurance_type = notes?.match(/insurance_type:\s*([^|]+)/i)?.[1]?.trim() ?? "";
+
+  const nameGreet = referredName ? `Hello ${referredName.trim().split(/\s+/)[0]} ji` : "Hello";
+  const insPart = insurance_type ? `${insurance_type} insurance` : "insurance";
+  const referredByPart = referred_by ? `${referred_by} ji` : "unke";
+
+  const opening = `${nameGreet}, main Dhivya hoon Policyfy se. Aapke ${relationship} ${referredByPart} se ${insPart} ke baare mein baat hui thi — unhone aapka number diya taaki main aapko bhi explain kar sakun. Kya abhi baat kar sakte hain?`;
+
+  return {
+    call_type: "referred",
+    opening_line: opening,
+    referral_opening: opening,
+    referred_by,
+    relationship,
+    insurance_type,
+  };
+}
+
 const RENEWAL_WINDOW_DAYS = 30;
 const TERMINAL_CALL_STATUSES = [
   "COMPLETED",
@@ -150,19 +179,20 @@ async function processFollowUp(
     return;
   }
 
-  // Build extra variables for callback calls so the agent can open with
-  // "Ji, aapne mujhe X baad call karne ko kaha tha. Kya ab baat kar sakte hain?"
-  const callbackVars =
+  // Build extra variables depending on follow-up type
+  const extraVars =
     followUp.type === "CALLBACK_REQUESTED"
       ? buildCallbackVars(followUp.notes, lead.full_name)
-      : {};
+      : followUp.type === "REFERRAL"
+        ? buildReferralVars(followUp.notes, lead.full_name)
+        : {};
 
   const outcome = await triggerCall({
     agentId,
     phone: lead.phone,
     leadId: lead.id,
-    callType: followUp.type.toLowerCase(),
-    variables: { name: lead.full_name, ...callbackVars },
+    callType: followUp.type === "REFERRAL" ? "referred" : followUp.type.toLowerCase(),
+    variables: { name: lead.full_name, ...extraVars },
   });
 
   if (outcome.success && outcome.call_log_id) {
