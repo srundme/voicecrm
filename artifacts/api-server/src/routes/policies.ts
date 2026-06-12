@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, gte, lte, or, ilike } from "drizzle-orm";
-import { db, policiesTable } from "@workspace/db";
+import { db, policiesTable, leadsTable } from "@workspace/db";
 import {
   ListPoliciesQueryParams,
   ListPoliciesResponse,
@@ -58,6 +58,11 @@ router.post("/policies", async (req, res): Promise<void> => {
     .insert(policiesTable)
     .values({ ...parsed.data, org_id: DEFAULT_ORG_ID })
     .returning();
+  // Automatically promote the lead to POLICY_ISSUED so it appears in Policy Holders
+  await db
+    .update(leadsTable)
+    .set({ stage: "POLICY_ISSUED", updated_at: new Date() })
+    .where(eq(leadsTable.id, parsed.data.lead_id));
   const [withName] = await attachLeadNames([row!]);
   res.status(201).json(withName);
 });
