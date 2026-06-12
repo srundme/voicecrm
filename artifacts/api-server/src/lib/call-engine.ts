@@ -308,19 +308,28 @@ export async function triggerCall(opts: {
   // Use the merged call_type (callbackVars may override context.call_type to "callback")
   const resolvedCallType = (variables.call_type as string) ?? context.call_type;
 
-  // Resolve agent name from Bolna if not provided by the caller
+  // Resolve agent name and linked outbound phone number in parallel
   let resolvedAgentName = opts.agentName ?? null;
-  if (!resolvedAgentName) {
-    const agentsResult = await bolna.listAgents();
-    if (agentsResult.success) {
-      resolvedAgentName =
-        agentsResult.data.find((a) => a.id === opts.agentId)?.name ?? null;
-    }
+  let fromPhone: string | undefined;
+
+  const [agentsResult, phoneNumbersResult] = await Promise.all([
+    bolna.listAgents(),
+    bolna.listPhoneNumbers(),
+  ]);
+
+  if (agentsResult.success) {
+    resolvedAgentName ??= agentsResult.data.find((a) => a.id === opts.agentId)?.name ?? null;
+  }
+  if (phoneNumbersResult.success) {
+    // Use the phone number assigned to this agent as the outbound caller ID
+    const linked = phoneNumbersResult.data.find((p) => p.agent_id === opts.agentId);
+    if (linked?.phone_number) fromPhone = linked.phone_number;
   }
 
   const started = await bolna.startCall({
     agentId: opts.agentId,
     phone,
+    fromPhone,
     variables,
   });
 
