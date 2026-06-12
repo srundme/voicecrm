@@ -152,7 +152,14 @@ Rules:
 
 Open with exactly: "{callback_opening}"
 
-Do NOT say the call was dropped. Do NOT re-introduce yourself. Just confirm they can talk now and continue.]
+Do NOT say the call was dropped. Do NOT re-introduce yourself. Just confirm they can talk now.
+
+{%- if callback_reason %}
+Here is what was already discussed and why they asked for a callback:
+{callback_reason}
+
+Pick up EXACTLY where you left off — do NOT ask questions the customer already answered. If they already told you their family size, insurance interest, budget, etc., use that information and move the conversation forward.
+{%- endif %}]
 
 {%- elif call_type == "referred" %}
 
