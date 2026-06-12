@@ -70,6 +70,7 @@ export function serializeApiConfig(row: ApiConfigRow) {
     webhook_secret: maskKey(row.webhook_secret),
     context_api_bearer_token: row.context_api_bearer_token,
     monthly_checkin_agent_id: row.monthly_checkin_agent_id,
+    human_agent_phone: row.human_agent_phone,
     sms_on_lead_created: row.sms_on_lead_created,
     sms_on_call_scheduled: row.sms_on_call_scheduled,
     email_renewal_reminders: row.email_renewal_reminders,
