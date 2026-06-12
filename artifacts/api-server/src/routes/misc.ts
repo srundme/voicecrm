@@ -76,9 +76,64 @@ async function handleContext(req: Request, res: Response): Promise<void> {
     res.status(400).json({ error: "Missing phone" });
     return;
   }
+
   // The /context endpoint is only called by Bolna for inbound calls.
   // Always mark isInbound=true so the callback opening is never served to a caller.
-  res.json(await buildCallContext(phone, true));
+  const ctx = await buildCallContext(phone, true);
+
+  // ── Create inbound call log at call-start time ────────────────────────────
+  // Bolna calls /context at the very start of every inbound call.
+  // We use this moment to pre-create a call log so the call appears immediately
+  // in the UI — even if the Bolna webhook is not configured / fires late.
+  void (async () => {
+    try {
+      const q = req.query as Record<string, unknown>;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const executionId = String(
+        q["run_id"] ?? q["execution_id"] ?? q["call_id"] ??
+        b["run_id"] ?? b["execution_id"] ?? b["call_id"] ?? "",
+      ).trim();
+      const agentId = String(q["agent_id"] ?? b["agent_id"] ?? "").trim();
+
+      if (!executionId || !agentId) {
+        logger.info({ executionId, agentId, phone }, "context: no execution_id or agent_id — skipping pre-create");
+        return;
+      }
+
+      // Check if already exists (idempotent)
+      const [existing] = await db
+        .select({ id: callLogsTable.id })
+        .from(callLogsTable)
+        .where(eq(callLogsTable.bolna_execution_id, executionId))
+        .limit(1);
+      if (existing) return;
+
+      const normalizedPhone = normalizePhone(phone);
+      const [lead] = normalizedPhone.length === 10
+        ? await db.select({ id: leadsTable.id }).from(leadsTable)
+            .where(and(eq(leadsTable.org_id, DEFAULT_ORG_ID), eq(leadsTable.phone, normalizedPhone)))
+            .limit(1)
+        : [];
+
+      await db.insert(callLogsTable).values({
+        org_id: DEFAULT_ORG_ID,
+        lead_id: lead?.id ?? null,
+        bolna_execution_id: executionId,
+        bolna_agent_id: agentId,
+        direction: "INBOUND",
+        phone_number: normalizedPhone || phone,
+        status: "INITIATED",
+        call_type: ctx.call_type,
+        memory_injected: ctx as unknown as Record<string, unknown>,
+      });
+
+      logger.info({ executionId, agentId, phone, leadId: lead?.id ?? null }, "context: pre-created inbound call log");
+    } catch (err) {
+      logger.error({ err }, "context: failed to pre-create inbound call log");
+    }
+  })();
+
+  res.json(ctx);
 }
 
 router.get("/context", handleContext);
