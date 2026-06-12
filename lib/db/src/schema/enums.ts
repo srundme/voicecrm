@@ -31,6 +31,7 @@ export const leadStageEnum = pgEnum("lead_stage", [
   "RENEWAL_DUE",
   "LOST",
   "DO_NOT_CALL",
+  "COLD",
 ]);
 
 export const policyStatusEnum = pgEnum("policy_status", [
@@ -76,6 +77,7 @@ export const followUpTypeEnum = pgEnum("follow_up_type", [
   "MANUAL",
   "POLICY_ANNIVERSARY",
   "REFERRAL",
+  "RETRY_NO_ANSWER",
 ]);
 
 export const followUpStatusEnum = pgEnum("follow_up_status", [
