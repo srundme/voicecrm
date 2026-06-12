@@ -1,3 +1,4 @@
+// schema: COLD stage + REFERRAL/RETRY_NO_ANSWER follow-up types supported
 import { Router, type IRouter } from "express";
 import {
   and,
