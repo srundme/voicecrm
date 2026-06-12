@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { label: "Dashboard",    href: "/",            icon: LayoutDashboard, color: "#60a5fa" },
   { label: "Leads",        href: "/leads",        icon: Users,           color: "#34d399" },
   { label: "Calls",        href: "/calls",        icon: Phone,           color: "#38bdf8" },
-  { label: "Policies",     href: "/policies",     icon: ShieldAlert,     color: "#fb923c" },
+  { label: "Policy Holders", href: "/policies",   icon: ShieldAlert,     color: "#fb923c" },
   { label: "Follow-ups",   href: "/follow-ups",   icon: CalendarDays,    color: "#fbbf24" },
   { label: "AI Agents",    href: "/agents",       icon: Bot,             color: "#a3e635" },
   { label: "Campaigns",    href: "/campaigns",    icon: Megaphone,       color: "#f472b6" },
