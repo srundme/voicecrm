@@ -132,10 +132,12 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
     lead_id: lead.id,
   };
 
+  const HELLO = `Hello. <break time="1s"/>`;
+
   const insuranceLabel = insuranceType || "insurance";
   const NEW_CALL_OPENING = insuranceType
-    ? `Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
-    : `Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
+    ? `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
+    : `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
 
   // No prior call → fresh outbound prospect.
   if (!lastCall) {
@@ -158,7 +160,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
       ...base,
       call_type: "drop_retry",
       context: combinedContext,
-      opening_line: `${firstName(name)} ji, maafi chahti hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karti hoon jahan hamne baat chodi thi.`,
+      opening_line: `${HELLO} ${firstName(name)} ji, maafi chahti hoon — lagta hai network ki wajah se call cut ho gayi thi. Main wahan se shuru karti hoon jahan hamne baat chodi thi.`,
       previous_execution_id: lastExecId,
       previous_summary: combinedContext,
     };
@@ -168,8 +170,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
   // Skip this branch for inbound calls — when the customer calls us, they should
   // always get the inbound greeting, not the outbound "you asked me to call back" script.
   if (pendingCallback && !isInbound) {
-    const callbackOpening = `${firstName(name)} ji, aapne mujhe baad mein call karne ko kaha tha — maine aapke liye kuch important dhundha tha, bas 2 minute ka kaam hai.`;
-    // Build callback_reason: combined context from all recent calls.
+    const callbackOpening = `${HELLO} ${firstName(name)} ji, aapne mujhe baad mein call karne ko kaha tha — maine aapke liye kuch important dhundha tha, bas 2 minute ka kaam hai.`;
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
     if (combinedContext) reasonParts.push(`What you already know from previous calls:\n${combinedContext}`);
@@ -185,15 +186,14 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
     };
   }
 
-  // Known contact with history.
+  // Known contact calling inbound — greeting is dynamic based on previous call context.
   const first = firstName(name);
+  const inboundOpening = buildInboundKnownOpening(HELLO, first, combinedContext, insuranceType, lead.stage);
   return {
     ...base,
     call_type: "inbound_known",
     context: combinedContext,
-    opening_line: first
-      ? `Namaskaar ${first} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`
-      : `Namaskaar, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Kaise hain aap?`,
+    opening_line: inboundOpening,
     previous_execution_id: lastExecId,
     policy_number: policy?.policy_number ?? undefined,
     renewal_date: policy?.renewal_date
@@ -201,4 +201,34 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
       : undefined,
     account_status: lead.stage,
   };
+}
+
+/**
+ * Builds a dynamic inbound opening for a known caller based on their last
+ * call context. Instead of a generic "Kaise hain aap?" it references what
+ * they were discussing so the agent picks up naturally where they left off.
+ */
+function buildInboundKnownOpening(
+  hello: string,
+  first: string,
+  combinedContext: string,
+  insuranceType: string,
+  stage: string | null,
+): string {
+  const name = first ? `${first} ji` : "aap";
+
+  // Lead has an active policy — likely calling about it
+  if (stage === "POLICY_ISSUED" || stage === "RENEWED") {
+    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapka call aaya — apni policy ke baare mein kuch poochna tha kya?`;
+  }
+
+  // Has previous call summary — reference it directly
+  if (combinedContext.trim().length > 30) {
+    const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
+    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Humne pichli baar ${insLabel} ke baare mein baat ki thi — aaj main aapki kya help kar sakti hoon?`;
+  }
+
+  // Known lead but no rich summary — warm but open-ended
+  const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
+  return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`;
 }
