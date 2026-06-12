@@ -27,8 +27,21 @@ export function buildCallbackVars(
 ): Record<string, string> {
   let callbackTime = "";
   const first = (leadName ?? "").trim().split(/\s+/)[0] ?? "";
-  const namePrefix = first ? `${first} ji, ` : "";
-  let callbackOpening = `${namePrefix}aapne humhe wapas call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+  const nameGreet = first ? `Hello ${first} ji` : "Hello";
+
+  // Extract optional activity the caller mentioned (stored as "| activity: driving")
+  const activityMatch = notes?.match(/\|\s*activity:\s*(.+)$/i);
+  const activity = activityMatch?.[1]?.trim() ?? null;
+
+  // Helper: build the tail — always ends with "ya baad mein call karun?"
+  const tail = "kya ab free hain, ya baad mein call karun?";
+
+  // Helper: activity context clause
+  const activityClause = activity
+    ? `Aapne kaha tha ki aap ${activity} mein hain — `
+    : "";
+
+  let callbackOpening: string;
 
   if (notes) {
     const minMatch = notes.match(/in (\d+) minute/i);
@@ -40,21 +53,33 @@ export function buildCallbackVars(
     if (minMatch) {
       const n = minMatch[1];
       callbackTime = `${n} minute`;
-      callbackOpening = `${namePrefix}aapne humhe ${n} minute baad call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+      if (activity) {
+        callbackOpening = `${nameGreet}, aapne kaha tha ki aap ${activity} mein hain aur ${n} minute baad call karne ko kaha tha — ${tail}`;
+      } else {
+        callbackOpening = `${nameGreet}, aapne mujhe ${n} minute baad call karne ko kaha tha — ${tail}`;
+      }
     } else if (hrMatch) {
       const n = hrMatch[1];
       callbackTime = `${n} hour`;
-      callbackOpening = `${namePrefix}aapne humhe ${n} ghante baad call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+      if (activity) {
+        callbackOpening = `${nameGreet}, aapne kaha tha ki aap ${activity} mein hain aur ${n} ghante baad call karne ko kaha tha — ${tail}`;
+      } else {
+        callbackOpening = `${nameGreet}, aapne mujhe ${n} ghante baad call karne ko kaha tha — ${tail}`;
+      }
     } else if (dayAfterMatch) {
       callbackTime = "day after tomorrow";
-      callbackOpening = `${namePrefix}aapne humhe parso call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+      callbackOpening = `${nameGreet}, ${activityClause}aapne mujhe parso call karne ko kaha tha — ${tail}`;
     } else if (tomorrowMatch) {
       callbackTime = "tomorrow";
-      callbackOpening = `${namePrefix}aapne humhe kal call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+      callbackOpening = `${nameGreet}, ${activityClause}aapne mujhe kal call karne ko kaha tha — ${tail}`;
     } else if (unspecifiedMatch) {
       callbackTime = "later";
-      callbackOpening = `${namePrefix}aapne humhe baad mein call karne ko kaha tha. Main wapas aa gayi hoon — kya ab baat kar sakte hain?`;
+      callbackOpening = `${nameGreet}, ${activityClause}aapne mujhe baad mein call karne ko kaha tha — ${tail}`;
+    } else {
+      callbackOpening = `${nameGreet}, ${activityClause}aapne mujhe call karne ko kaha tha — ${tail}`;
     }
+  } else {
+    callbackOpening = `${nameGreet}, aapne mujhe call karne ko kaha tha — ${tail}`;
   }
 
   return {
