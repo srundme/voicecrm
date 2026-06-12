@@ -55,7 +55,8 @@ export function parseCallbackIntent(
     "call back", "callback", "call kar", "call karo", "call karen", "call kijiye",
     "call karna", "wapas call", "phir call", "baad mein call", "baad call",
     "bad mein call", "call karti hoon", "call karta hoon", "call karenge",
-    "call later", "call again",
+    "call later", "call again", "call after", "i will call", "will call",
+    "call you back", "call back later",
     // Devanagari script
     "कॉल करो", "कॉल कर", "कॉल करूंगा", "कॉल करूंगी", "कॉल करेंगे",
     "कॉल करना", "वापस कॉल", "बाद में कॉल", "कॉल करती", "कॉल करता",
@@ -68,8 +69,8 @@ export function parseCallbackIntent(
     `${NUM_PAT}\\s*(?:minute|minutes|min|mins|मिनट)\\s*(?:baad|bad|ke baad|after|later|के बाद|बाद)`,
     "i",
   );
-  // Pattern 2: word-first "after 10 minutes", "in 10 minutes" (AI-generated English summaries)
-  const minRxEn = /(?:after|in)\s+(\d+)\s+(?:minute|minutes|min)/i;
+  // Pattern 2: word-first "after 10 minutes", "after two minutes", "in 2 minutes"
+  const minRxEn = new RegExp(`(?:after|in)\\s+${NUM_PAT}\\s+(?:minute|minutes|min)`, "i");
 
   const minMatch = lower.match(minRx) ?? text.match(minRxEn);
   if (minMatch) {
