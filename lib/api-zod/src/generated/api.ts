@@ -133,6 +133,7 @@ export const ListLeadsResponse = zod.object({
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "is_dnd": zod.boolean().optional(),
   "last_contacted_at": zod.coerce.date().nullish(),
   "next_followup_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date(),
@@ -211,6 +212,7 @@ export const GetLeadResponse = zod.object({
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "is_dnd": zod.boolean().optional(),
   "last_contacted_at": zod.coerce.date().nullish(),
   "next_followup_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date(),
@@ -326,6 +328,7 @@ export const UpdateLeadBody = zod.object({
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "is_dnd": zod.boolean().optional(),
   "next_followup_at": zod.coerce.date().nullish()
 })
 
@@ -359,6 +362,7 @@ export const UpdateLeadResponse = zod.object({
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "is_dnd": zod.boolean().optional(),
   "last_contacted_at": zod.coerce.date().nullish(),
   "next_followup_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date(),
@@ -426,6 +430,7 @@ export const AddLeadNoteResponse = zod.object({
   "assigned_to": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()),
+  "is_dnd": zod.boolean().optional(),
   "last_contacted_at": zod.coerce.date().nullish(),
   "next_followup_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date(),
