@@ -273,9 +273,20 @@ async function processDueFollowUps(): Promise<void> {
 }
 
 /**
- * Mark IN_PROGRESS follow-ups COMPLETED once their linked call reaches a
- * terminal state, closing the loop opened in processFollowUp.
+ * Given a date, return the same day-of-month one calendar month later.
+ * Handles month-end edge cases: Jan 31 → Feb 28/29, etc.
  */
+function nextMonthSameDay(date: Date): Date {
+  const next = new Date(date);
+  const originalDay = date.getDate();
+  next.setMonth(next.getMonth() + 1);
+  // If month rolled over (e.g. Jan 31 → Mar 2), clamp to last day of target month
+  if (next.getDate() !== originalDay) {
+    next.setDate(0); // last day of the previous (target) month
+  }
+  return next;
+}
+
 async function completeFinishedFollowUps(): Promise<void> {
   const inFlight = await db
     .select()
@@ -301,6 +312,37 @@ async function completeFinishedFollowUps(): Promise<void> {
           .update(followUpsTable)
           .set({ status: "COMPLETED", completed_at: new Date() })
           .where(eq(followUpsTable.id, followUp.id));
+
+        // Auto-schedule next monthly check-in: same day next month
+        if (followUp.type === "MONTHLY_CHECKIN") {
+          const existing = await db
+            .select({ id: followUpsTable.id })
+            .from(followUpsTable)
+            .where(
+              and(
+                eq(followUpsTable.lead_id, followUp.lead_id),
+                eq(followUpsTable.type, "MONTHLY_CHECKIN"),
+                eq(followUpsTable.status, "PENDING"),
+              ),
+            )
+            .limit(1);
+
+          if (existing.length === 0) {
+            const nextDate = nextMonthSameDay(followUp.scheduled_at);
+            await db.insert(followUpsTable).values({
+              org_id: DEFAULT_ORG_ID,
+              lead_id: followUp.lead_id,
+              type: "MONTHLY_CHECKIN",
+              scheduled_at: nextDate,
+              status: "PENDING",
+              notes: `Auto-scheduled: monthly check-in on ${nextDate.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" })}`,
+            });
+            logger.info(
+              { leadId: followUp.lead_id, nextDate },
+              "Auto-scheduled next monthly check-in",
+            );
+          }
+        }
       }
     } catch (err) {
       logger.error(
