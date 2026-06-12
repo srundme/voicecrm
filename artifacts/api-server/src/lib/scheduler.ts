@@ -33,13 +33,15 @@ export function buildCallbackVars(
   const activityMatch = notes?.match(/\|\s*activity:\s*(.+)$/i);
   const activity = activityMatch?.[1]?.trim() ?? null;
 
-  // Helper: build the tail — always ends with "ya baad mein call karun?"
-  const tail = "kya ab free hain, ya baad mein call karun?";
-
   // Helper: activity context clause
   const activityClause = activity
-    ? `Aapne kaha tha ki aap ${activity} mein hain — `
+    ? `aapne kaha tha ki aap ${activity} mein hain — `
     : "";
+
+  // Value-first tail — NOT a yes/no permission question.
+  // Stating value ("maine kuch important dhundha") invites curiosity,
+  // not a binary yes/no that the AI gives up on when customer says "busy".
+  const tail = "maine aapke liye kuch important dhundha tha — bas 2 minute ka kaam hai.";
 
   let callbackOpening: string;
 
