@@ -1,6 +1,6 @@
 import { useRoute } from "wouter";
 import { useGetLead, getGetLeadQueryKey, useUpdateLead, useTriggerLeadCall, getListAgentsQueryKey, useListAgents, LeadStage, type LeadDetail as LeadDetailType, type LeadUpdate } from "@workspace/api-client-react";
-import { formatPhone, formatDate, formatCurrency } from "@/lib/format";
+import { formatPhone, formatDate, formatDateTime, formatCurrency } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -438,7 +438,7 @@ export default function LeadDetail() {
                   <div className="flex-1 pb-3">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-semibold text-[#1a1c2e]">Lead Created</span>
-                      <span className="text-[11px] text-muted-foreground">{formatDate(lead.created_at)}</span>
+                      <span className="text-[11px] text-muted-foreground">{formatDateTime(lead.created_at)}</span>
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       Captured via {lead.source.replace(/_/g, " ").toLowerCase()}
@@ -462,7 +462,7 @@ export default function LeadDetail() {
                             {call.direction === "INBOUND" ? "Inbound" : "Outbound"} Call
                           </span>
                           <CallStatusBadge status={call.status} />
-                          <span className="text-[11px] text-muted-foreground">{call.started_at ? formatDate(call.started_at) : "N/A"}</span>
+                          <span className="text-[11px] text-muted-foreground">{call.started_at ? formatDateTime(call.started_at) : "N/A"}</span>
                           {call.duration_seconds && call.duration_seconds > 0 && (
                             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                               <Clock className="w-3 h-3" /> {Math.floor(call.duration_seconds / 60)}m {call.duration_seconds % 60}s
