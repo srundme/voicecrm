@@ -412,6 +412,67 @@ export function isProperCallEnding(
   return properEndingSignals.some((signal) => text.includes(signal));
 }
 
+/**
+ * If a call was dropped mid-conversation (COMPLETED status but no proper ending,
+ * duration > 15s), schedule a retry call 2 minutes later with a drop-aware opening.
+ * Only fires once per call (skips if this call is already a drop_retry).
+ * Skips DND leads and DO_NOT_CALL stage.
+ */
+export async function scheduleDropRetry(call: CallLogRow): Promise<void> {
+  // Only retry mid-conversation drops, not NO_ANSWER / BUSY / FAILED
+  if (call.status !== "COMPLETED") return;
+  // Don't retry a retry — avoid infinite loops
+  if (call.retry_of_call_id) return;
+  // Must have had meaningful conversation (>15 s)
+  const dur = call.duration_seconds ?? 0;
+  if (dur < 15) return;
+  // Need lead + phone to call back
+  if (!call.lead_id || !call.phone_number) return;
+
+  // Check lead isn't DND or DO_NOT_CALL
+  const [lead] = await db
+    .select({ stage: leadsTable.stage, is_dnd: leadsTable.is_dnd, full_name: leadsTable.full_name })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, call.lead_id));
+  if (!lead) return;
+  if (lead.is_dnd || lead.stage === "DO_NOT_CALL") return;
+
+  const firstName = (lead.full_name ?? "").split(" ")[0] ?? "aap";
+  const dropOpening = `${firstName} ji, sorry — humari call abhi toot gayi thi. Main wapas connect kar raha hoon. Kya aap abhi baat kar sakte hain?`;
+
+  logger.info({ callId: call.id, leadId: call.lead_id, delayMs: 120_000 }, "Scheduling drop retry in 2 min");
+
+  setTimeout(async () => {
+    try {
+      // Re-check DND in case it was set during the 2-minute window
+      const [fresh] = await db
+        .select({ is_dnd: leadsTable.is_dnd, stage: leadsTable.stage })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, call.lead_id!));
+      if (!fresh || fresh.is_dnd || fresh.stage === "DO_NOT_CALL") {
+        logger.info({ callId: call.id }, "Drop retry cancelled — lead is DND");
+        return;
+      }
+
+      const agentsResult = await bolna.listAgents();
+      const agentId = call.bolna_agent_id ??
+        (agentsResult.success ? agentsResult.data[0]?.id : null);
+      if (!agentId) { logger.warn({ callId: call.id }, "Drop retry: no agentId found"); return; }
+
+      const result = await triggerCall({
+        agentId,
+        phone: call.phone_number!,
+        leadId: call.lead_id!,
+        retryOfCallId: call.id,
+        variables: { opening_line: dropOpening, call_type: "drop_retry" },
+      });
+      logger.info({ callId: call.id, retryCallId: result.call_log_id }, "Drop retry triggered");
+    } catch (err) {
+      logger.error({ err, callId: call.id }, "Drop retry failed");
+    }
+  }, 120_000); // 2 minutes
+}
+
 export function startPolling(callLogId: string, executionId: string): void {
   if (activePolls.has(callLogId)) return;
   activePolls.add(callLogId);
