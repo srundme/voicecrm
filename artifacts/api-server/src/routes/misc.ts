@@ -77,9 +77,21 @@ async function handleContext(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Look up the agent name from the request so the opening line uses the right
+  // agent name (not a hardcoded fallback) when multiple agents are configured.
+  const ctxAgentId = String(
+    (req.query as Record<string, unknown>)["agent_id"] ??
+    ((req.body ?? {}) as Record<string, unknown>)["agent_id"] ?? ""
+  ).trim();
+  let ctxAgentName = "Dhivya";
+  if (ctxAgentId) {
+    const ar = await bolna.listAgents();
+    if (ar.success) ctxAgentName = ar.data.find((a) => a.id === ctxAgentId)?.name ?? "Dhivya";
+  }
+
   // The /context endpoint is only called by Bolna for inbound calls.
   // Always mark isInbound=true so the callback opening is never served to a caller.
-  const ctx = await buildCallContext(phone, true);
+  const ctx = await buildCallContext(phone, true, ctxAgentName);
 
   // ── Create inbound call log at call-start time ────────────────────────────
   // Bolna calls /context at the very start of every inbound call.
