@@ -49,7 +49,7 @@ function firstName(fullName: string): string {
  * line is never used — inbound callers should always get the inbound greeting,
  * not the outbound "you asked me to call back" script.
  */
-export async function buildCallContext(rawPhone: string, isInbound = false): Promise<CallContext> {
+export async function buildCallContext(rawPhone: string, isInbound = false, agentName = "Dhivya"): Promise<CallContext> {
   const phone = normalizePhone(rawPhone);
 
   const [lead] = await db
@@ -100,7 +100,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
 
   // True if there has been at least one call where the lead actually spoke to
   // the agent (COMPLETED). If all calls are NO_ANSWER/BUSY/FAILED the lead
-  // has never had a real conversation with Dhivya.
+  // has never had a real conversation with the agent.
   const hasActualConversation = recentCalls.some((c) => c.status === "COMPLETED");
 
   // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
@@ -143,8 +143,8 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
 
   const insuranceLabel = insuranceType || "insurance";
   const NEW_CALL_OPENING = insuranceType
-    ? `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
-    : `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
+    ? `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
+    : `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
 
   // No prior call → fresh outbound prospect.
   if (!lastCall) {
@@ -183,6 +183,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
       pendingCallback.notes,
       combinedContext,
       insuranceType,
+      agentName,
     );
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
@@ -202,7 +203,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
   // When the customer calls us inbound, they get the inbound_after_callback_miss
   // branch above, not this outbound script.
   if (pendingCallback && !isInbound) {
-    const callbackOpening = buildCallbackOpening(HELLO, firstName(name), pendingCallback.notes, combinedContext, insuranceType);
+    const callbackOpening = buildCallbackOpening(HELLO, firstName(name), pendingCallback.notes, combinedContext, insuranceType, agentName);
     const reasonParts: string[] = [];
     if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
     if (combinedContext) reasonParts.push(`What you already know from previous calls:\n${combinedContext}`);
@@ -223,7 +224,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
   // NO_ANSWER / BUSY / FAILED). Give a warm fresh intro that acknowledges
   // the missed call rather than pretending a conversation already happened.
   if (isInbound && !hasActualConversation) {
-    const opening = `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapko hamare number se call aayi thi ${insuranceLabel} insurance ke baare mein — aap khud call kar rahe hain, bahut achha! Kya abhi thodi baat ho sakti hai?`;
+    const opening = `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapko hamare number se call aayi thi ${insuranceLabel} insurance ke baare mein — aap khud call kar rahe hain, bahut achha! Kya abhi thodi baat ho sakti hai?`;
     return {
       ...base,
       call_type: "inbound_after_no_answer",
@@ -235,7 +236,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
 
   // Known contact calling inbound — greeting is dynamic based on previous call context.
   const first = firstName(name);
-  const inboundOpening = buildInboundKnownOpening(HELLO, first, combinedContext, insuranceType, lead.stage);
+  const inboundOpening = buildInboundKnownOpening(HELLO, first, combinedContext, insuranceType, lead.stage, agentName);
   return {
     ...base,
     call_type: "inbound_known",
@@ -261,6 +262,7 @@ function buildCallbackOpening(
   notes: string | null,
   combinedContext: string,
   insuranceType: string,
+  agentName: string,
 ): string {
   const name = first ? `${first} ji` : "aap";
   const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
@@ -276,13 +278,13 @@ function buildCallbackOpening(
   // Has rich previous call context — reference it specifically
   if (combinedContext.trim().length > 50) {
     if (activity) {
-      return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "baad mein"} baat karne ko kaha tha — ${activity} ke baare mein aage baat karni thi na? Kya abhi thodi der baat ho sakti hai?`;
+      return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "baad mein"} baat karne ko kaha tha — ${activity} ke baare mein aage baat karni thi na? Kya abhi thodi der baat ho sakti hai?`;
     }
-    return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} baad` : "baad mein"} call karne ko kaha tha — ${insLabel} ke baare mein humari baat adhoori reh gayi thi. Kya abhi thodi der baat ho sakti hai?`;
+    return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} baad` : "baad mein"} call karne ko kaha tha — ${insLabel} ke baare mein humari baat adhoori reh gayi thi. Kya abhi thodi der baat ho sakti hai?`;
   }
 
   // No rich context — warm generic but still better than the fixed line
-  return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
+  return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
 }
 
 /**
@@ -297,6 +299,7 @@ function buildCallbackMissedInboundOpening(
   notes: string | null,
   combinedContext: string,
   insuranceType: string,
+  agentName: string,
 ): string {
   const name = first ? `${first} ji` : "aap";
   const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
@@ -305,14 +308,14 @@ function buildCallbackMissedInboundOpening(
   const activity = activityMatch?.[1]?.trim();
 
   if (activity) {
-    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${activity} ke baare mein baat karne ko kaha tha — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye, bahut achha! Batayein, kya discuss karna tha?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${activity} ke baare mein baat karne ko kaha tha — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye, bahut achha! Batayein, kya discuss karna tha?`;
   }
 
   if (combinedContext.trim().length > 30) {
-    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne callback request ki thi — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye! ${insLabel} ke baare mein humari baat adhoori thi — kya abhi baat kar sakte hain?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne callback request ki thi — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye! ${insLabel} ke baare mein humari baat adhoori thi — kya abhi baat kar sakte hain?`;
   }
 
-  return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne callback maangi thi — main aapko call kar rahi thi, aap khud aa gaye! Batayein, kya help chahiye?`;
+  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne callback maangi thi — main aapko call kar rahi thi, aap khud aa gaye! Batayein, kya help chahiye?`;
 }
 
 /**
@@ -326,21 +329,22 @@ function buildInboundKnownOpening(
   combinedContext: string,
   insuranceType: string,
   stage: string | null,
+  agentName: string,
 ): string {
   const name = first ? `${first} ji` : "aap";
 
   // Lead has an active policy — likely calling about it
   if (stage === "POLICY_ISSUED" || stage === "RENEWED") {
-    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapka call aaya — apni policy ke baare mein kuch poochna tha kya?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapka call aaya — apni policy ke baare mein kuch poochna tha kya?`;
   }
 
   // Has previous call summary — reference it directly
   if (combinedContext.trim().length > 30) {
     const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
-    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Humne pichli baar ${insLabel} ke baare mein baat ki thi — aaj main aapki kya help kar sakti hoon?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Humne pichli baar ${insLabel} ke baare mein baat ki thi — aaj main aapki kya help kar sakti hoon?`;
   }
 
   // Known lead but no rich summary — warm but open-ended
   const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
-  return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`;
+  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`;
 }
