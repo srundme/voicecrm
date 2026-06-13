@@ -363,12 +363,24 @@ export default function LeadSources() {
               <div className="py-8 text-center text-muted-foreground">No webhook activity yet.</div>
             ) : (
               <Table>
-                <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Status</TableHead><TableHead>Reason</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {webhooks.map((w) => (
                     <TableRow key={w.id}>
                       <TableCell className="font-medium capitalize">{w.source.replace(/_/g, ' ').toLowerCase()}</TableCell>
-                      <TableCell><Badge variant={w.status === "SUCCESS" || w.status === "SKIPPED" ? "default" : "destructive"}>{w.status}</Badge></TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={w.status === "SUCCESS" ? "default" : "secondary"}
+                          className={
+                            w.status === "SUCCESS"
+                              ? "bg-green-600 text-white hover:bg-green-700"
+                              : w.status === "SKIPPED"
+                              ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                              : "bg-red-500 text-white hover:bg-red-600"
+                          }
+                        >{w.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{(w as any).message ?? "—"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatRelativeTime(w.created_at)}</TableCell>
                     </TableRow>
                   ))}
