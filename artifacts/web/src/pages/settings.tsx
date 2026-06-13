@@ -27,7 +27,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 
-type Service = "bolna" | "brevo" | "meta";
+type Service = "bolna" | "brevo" | "meta" | "openai";
 
 function CopyButton({ value }: { value?: string | null }) {
   const [copied, setCopied] = useState(false);
@@ -119,6 +119,7 @@ export default function Settings() {
     bolna_api_key: "",
     brevo_api_key: "",
     meta_ads_access_token: "",
+    openai_api_key: "",
     sms_on_lead_created: false,
     sms_on_call_scheduled: false,
     monthly_checkin_agent_id: "",
@@ -133,6 +134,7 @@ export default function Settings() {
         bolna_api_key: config.bolna_api_key || "",
         brevo_api_key: config.brevo_api_key || "",
         meta_ads_access_token: config.meta_ads_access_token || "",
+        openai_api_key: config.openai_api_key || "",
         sms_on_lead_created: config.sms_on_lead_created || false,
         sms_on_call_scheduled: config.sms_on_call_scheduled || false,
         monthly_checkin_agent_id: config.monthly_checkin_agent_id || "",
@@ -157,7 +159,7 @@ export default function Settings() {
 
   const handleSave = () => {
     const payload: Record<string, unknown> = { ...formData };
-    for (const k of ["bolna_api_key", "brevo_api_key", "meta_ads_access_token"] as const) {
+    for (const k of ["bolna_api_key", "brevo_api_key", "meta_ads_access_token", "openai_api_key"] as const) {
       if (payload[k] === SENTINEL || payload[k] === "") delete payload[k];
     }
     updateConfig.mutate(
@@ -261,6 +263,7 @@ export default function Settings() {
             {keyField("bolna", "Bolna API Key (Voice AI)", "sk_...", "bolna_api_key")}
             {keyField("brevo", "Brevo API Key (Email/SMS)", "xkeysib-...", "brevo_api_key")}
             {keyField("meta", "Meta Ads Access Token", "EAAG...", "meta_ads_access_token")}
+            {keyField("openai", "OpenAI API Key (AI Analysis)", "sk-...", "openai_api_key")}
             {config?.updated_at && <div className="text-xs text-muted-foreground">Last updated: {new Date(config.updated_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</div>}
           </CardContent>
           <CardFooter className="bg-muted/30 px-6 py-4 border-t flex justify-end">
