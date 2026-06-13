@@ -67,6 +67,7 @@ export function serializeApiConfig(row: ApiConfigRow) {
     brevo_sender_name: row.brevo_sender_name,
     meta_ads_access_token: maskKey(row.meta_ads_access_token),
     meta_ads_account_id: row.meta_ads_account_id,
+    openai_api_key: maskKey(row.openai_api_key),
     webhook_secret: maskKey(row.webhook_secret),
     context_api_bearer_token: row.context_api_bearer_token,
     monthly_checkin_agent_id: row.monthly_checkin_agent_id,
@@ -79,4 +80,21 @@ export function serializeApiConfig(row: ApiConfigRow) {
     meta_webhook_url: `${base}/api/webhooks/meta?secret=${row.webhook_secret}`,
     website_form_webhook_url: `${base}/api/webhooks/website-form?secret=${row.webhook_secret}`,
   };
+}
+
+/**
+ * Returns the OpenAI API key to use, in priority order:
+ * 1. DB-stored key (set via VoiceCRM settings UI)
+ * 2. AI_INTEGRATIONS_OPENAI_API_KEY env var (Replit proxy)
+ * 3. OPENAI_API_KEY env var (Railway / direct)
+ * 4. "dummy" fallback (OpenAI client won't call if key is missing — will fail loudly)
+ */
+export async function getOpenAIApiKey(): Promise<string> {
+  const cfg = await ensureApiConfig();
+  return (
+    cfg.openai_api_key ||
+    process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ||
+    process.env["OPENAI_API_KEY"] ||
+    "dummy"
+  );
 }
