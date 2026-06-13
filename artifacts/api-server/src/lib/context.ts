@@ -71,7 +71,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
       city: "",
       insurance_type: "",
       context: "",
-      opening_line: "",
+      opening_line: `Hello. <break time="1s"/> Namaskaar, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aap kaise help kar sakti hoon aapki?`,
       previous_execution_id: "",
     };
   }
