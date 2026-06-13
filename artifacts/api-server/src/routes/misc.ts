@@ -395,12 +395,6 @@ router.post("/webhooks/website-form", async (req, res): Promise<void> => {
 });
 
 router.post("/webhooks/bolna", async (req, res): Promise<void> => {
-  const cfg = await ensureApiConfig();
-  if (!checkSecret(req, cfg.webhook_secret)) {
-    res.status(401).json({ error: "Invalid secret" });
-    return;
-  }
-
   const body = (req.body ?? {}) as Record<string, unknown>;
 
   const executionId = String(
