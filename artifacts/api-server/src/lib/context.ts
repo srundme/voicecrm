@@ -101,7 +101,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
   const SUMMARY_MIN_LEN = 30;
   const TRANSCRIPT_MIN_LEN = 60;
 
-  const combinedContext = recentCalls
+  const callHistoryContext = recentCalls
     .filter((c) =>
       c.status === "COMPLETED" ||
       (c.summary ?? "").trim().length >= SUMMARY_MIN_LEN ||
@@ -133,6 +133,12 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
     })
     .filter((s): s is string => s !== null)
     .join("\n---\n");
+
+  // Combine structured profile + call history into one context block.
+  // Known profile always comes first so the agent sees it before call summaries.
+  const combinedContext = [knownProfileBlock, callHistoryContext]
+    .filter(Boolean)
+    .join("\n\n");
 
   // True if there has been at least one call where the lead actually spoke to
   // the agent (COMPLETED). If all calls are NO_ANSWER/BUSY/FAILED the lead
@@ -174,6 +180,23 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
     insurance_type: insuranceType,
     lead_id: lead.id,
   };
+
+  // ── Build "Known Profile" block from structured lead data ─────────────────
+  // Any field already in the DB means we know it — agent must NOT re-ask.
+  const knownLines: string[] = [];
+  if (lead.age) knownLines.push(`Age: ${lead.age}`);
+  if (lead.gender && lead.gender !== "OTHER") knownLines.push(`Gender: ${lead.gender}`);
+  if (lead.city) knownLines.push(`City: ${lead.city}`);
+  if (lead.state) knownLines.push(`State: ${lead.state}`);
+  if (lead.occupation) knownLines.push(`Occupation: ${lead.occupation}`);
+  if (lead.annual_income) knownLines.push(`Annual income: ₹${(lead.annual_income / 100000).toFixed(1)} lakh`);
+  if (lead.sum_assured_interest) knownLines.push(`Sum insured interest: ₹${(lead.sum_assured_interest / 100000).toFixed(0)} lakh`);
+  if (lead.premium_budget) knownLines.push(`Premium budget: ₹${lead.premium_budget.toLocaleString("en-IN")}/year`);
+  if (lead.notes) knownLines.push(`Notes: ${lead.notes}`);
+
+  const knownProfileBlock = knownLines.length > 0
+    ? `[KNOWN PROFILE — do NOT re-ask any of this]\n${knownLines.join("\n")}`
+    : "";
 
   const HELLO = `Hello. <break time="1s"/>`;
 
