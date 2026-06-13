@@ -2,11 +2,15 @@ import OpenAI from "openai";
 import { eq } from "drizzle-orm";
 import { db, leadsTable, type CallLogRow } from "@workspace/db";
 import { logger } from "./logger";
+import { getOpenAIApiKey } from "./org";
 
-const openai = new OpenAI({
-  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
-  apiKey: process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ?? "dummy",
-});
+async function getOpenAI(): Promise<OpenAI> {
+  const apiKey = await getOpenAIApiKey();
+  return new OpenAI({
+    baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"],
+    apiKey,
+  });
+}
 
 type StageClassification = {
   stage:
@@ -49,6 +53,7 @@ export async function classifyLeadStage(
   if (!content || content.trim().length < 30) return null;
 
   try {
+    const openai = await getOpenAI();
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini",
       max_completion_tokens: 200,
