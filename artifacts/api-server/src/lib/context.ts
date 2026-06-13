@@ -17,7 +17,9 @@ export type CallContext = {
     | "drop_retry"
     | "callback"
     | "inbound_known"
-    | "inbound_new";
+    | "inbound_new"
+    | "inbound_after_no_answer"
+    | "inbound_after_callback_miss";
   user_name: string;
   gender: string;
   city: string;
@@ -96,6 +98,11 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
     .map((c) => c.summary!.trim())
     .join("\n---\n");
 
+  // True if there has been at least one call where the lead actually spoke to
+  // the agent (COMPLETED). If all calls are NO_ANSWER/BUSY/FAILED the lead
+  // has never had a real conversation with Dhivya.
+  const hasActualConversation = recentCalls.some((c) => c.status === "COMPLETED");
+
   // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
   // before triggerCall runs) are still detected here and get the right call_type + context.
   const [pendingCallback] = await db
@@ -166,9 +173,34 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
     };
   }
 
-  // A callback was explicitly requested and is now due.
-  // Skip this branch for inbound calls — when the customer calls us, they should
-  // always get the inbound greeting, not the outbound "you asked me to call back" script.
+  // ── INBOUND: Lead had requested a callback, we tried calling but they missed
+  // our call, and now they are calling us back. Acknowledge both the callback
+  // request AND that we tried to reach them — "aap khud aa gaye, achha hua!"
+  if (isInbound && pendingCallback) {
+    const opening = buildCallbackMissedInboundOpening(
+      HELLO,
+      firstName(name),
+      pendingCallback.notes,
+      combinedContext,
+      insuranceType,
+    );
+    const reasonParts: string[] = [];
+    if (pendingCallback.notes) reasonParts.push(pendingCallback.notes);
+    if (combinedContext) reasonParts.push(`What you already know from previous calls:\n${combinedContext}`);
+    return {
+      ...base,
+      call_type: "inbound_after_callback_miss",
+      context: combinedContext,
+      opening_line: opening,
+      callback_reason: reasonParts.join("\n\n"),
+      previous_execution_id: lastExecId,
+      previous_summary: combinedContext,
+    };
+  }
+
+  // A callback was explicitly requested and is now due — outbound only.
+  // When the customer calls us inbound, they get the inbound_after_callback_miss
+  // branch above, not this outbound script.
   if (pendingCallback && !isInbound) {
     const callbackOpening = buildCallbackOpening(HELLO, firstName(name), pendingCallback.notes, combinedContext, insuranceType);
     const reasonParts: string[] = [];
@@ -183,6 +215,21 @@ export async function buildCallContext(rawPhone: string, isInbound = false): Pro
       callback_reason: reasonParts.join("\n\n"),
       previous_execution_id: lastExecId,
       previous_summary: combinedContext,
+    };
+  }
+
+  // ── INBOUND: Lead is calling back after seeing a missed call but the two
+  // have NEVER had an actual conversation (all previous attempts were
+  // NO_ANSWER / BUSY / FAILED). Give a warm fresh intro that acknowledges
+  // the missed call rather than pretending a conversation already happened.
+  if (isInbound && !hasActualConversation) {
+    const opening = `${HELLO} Namaskaar ${firstName(name)} ji, main Dhivya baat kar rahi hoon पॉलिसीफाई dot com se. Aapko hamare number se call aayi thi ${insuranceLabel} insurance ke baare mein — aap khud call kar rahe hain, bahut achha! Kya abhi thodi baat ho sakti hai?`;
+    return {
+      ...base,
+      call_type: "inbound_after_no_answer",
+      context: "",
+      opening_line: opening,
+      previous_execution_id: lastExecId,
     };
   }
 
@@ -236,6 +283,36 @@ function buildCallbackOpening(
 
   // No rich context — warm generic but still better than the fixed line
   return `${hello} ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
+}
+
+/**
+ * Builds the opening for an inbound call where the lead had requested a
+ * callback, we attempted the outbound call but they missed it, and now they
+ * are calling us back. Acknowledges both the callback request and the missed
+ * outbound attempt so the agent can pick up naturally.
+ */
+function buildCallbackMissedInboundOpening(
+  hello: string,
+  first: string,
+  notes: string | null,
+  combinedContext: string,
+  insuranceType: string,
+): string {
+  const name = first ? `${first} ji` : "aap";
+  const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
+
+  const activityMatch = (notes ?? "").match(/activity:\s*(.+)/i);
+  const activity = activityMatch?.[1]?.trim();
+
+  if (activity) {
+    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne ${activity} ke baare mein baat karne ko kaha tha — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye, bahut achha! Batayein, kya discuss karna tha?`;
+  }
+
+  if (combinedContext.trim().length > 30) {
+    return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne callback request ki thi — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye! ${insLabel} ke baare mein humari baat adhoori thi — kya abhi baat kar sakte hain?`;
+  }
+
+  return `${hello} Namaskaar ${name}, main Dhivya baat kar rahi hoon पॉलिसीफाई se. Aapne callback maangi thi — main aapko call kar rahi thi, aap khud aa gaye! Batayein, kya help chahiye?`;
 }
 
 /**
