@@ -90,12 +90,24 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
 
   const lastCall = recentCalls[0] ?? null;
 
-  // Build combined context from all recent calls that have a meaningful summary
-  // (>30 chars). Most-recent first so the agent sees the freshest info at the top.
+  // Build combined context from all recent calls.
+  // Primary source: summary (>30 chars). Fallback: transcript excerpt (first 800 chars)
+  // so memory works even when Bolna does not generate a summary for the call.
   const SUMMARY_MIN_LEN = 30;
+  const TRANSCRIPT_MIN_LEN = 60;
   const combinedContext = recentCalls
-    .filter((c) => (c.summary ?? "").trim().length >= SUMMARY_MIN_LEN)
-    .map((c) => c.summary!.trim())
+    .filter((c) =>
+      (c.summary ?? "").trim().length >= SUMMARY_MIN_LEN ||
+      (c.transcript ?? "").trim().length >= TRANSCRIPT_MIN_LEN,
+    )
+    .map((c) => {
+      const summary = (c.summary ?? "").trim();
+      if (summary.length >= SUMMARY_MIN_LEN) return summary;
+      // No usable summary — pull the first 800 chars of the transcript so the
+      // agent still has real conversation content to reference.
+      const excerpt = (c.transcript ?? "").trim().slice(0, 800);
+      return `[Previous conversation excerpt]\n${excerpt}`;
+    })
     .join("\n---\n");
 
   // True if there has been at least one call where the lead actually spoke to
