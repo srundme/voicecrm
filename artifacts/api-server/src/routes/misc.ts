@@ -71,8 +71,23 @@ async function handleContext(req: Request, res: Response): Promise<void> {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  const rawPhone = String(
+    (req.query as Record<string, unknown>)["contact_number"] ??
+    (req.query as Record<string, unknown>)["phone"] ??
+    ((req.body ?? {}) as Record<string, unknown>)["phone"] ??
+    ((req.body ?? {}) as Record<string, unknown>)["recipient_phone_number"] ??
+    ((req.body ?? {}) as Record<string, unknown>)["caller"] ?? ""
+  );
+
+  logger.info(
+    { rawPhone, query: req.query, method: req.method },
+    "context: incoming request"
+  );
+
   const phone = resolvePhone(req);
   if (!phone) {
+    logger.warn({ rawPhone, query: req.query }, "context: could not resolve phone — returning 400");
     res.status(400).json({ error: "Missing phone" });
     return;
   }
@@ -92,6 +107,18 @@ async function handleContext(req: Request, res: Response): Promise<void> {
   // The /context endpoint is only called by Bolna for inbound calls.
   // Always mark isInbound=true so the callback opening is never served to a caller.
   const ctx = await buildCallContext(phone, true, ctxAgentName);
+
+  logger.info(
+    {
+      phone,
+      call_type: ctx.call_type,
+      user_name: ctx.user_name,
+      hasContext: ctx.context.length > 0,
+      contextLen: ctx.context.length,
+      opening_line_preview: ctx.opening_line.slice(0, 80),
+    },
+    "context: serving response to Bolna"
+  );
 
   // ── Create inbound call log at call-start time ────────────────────────────
   // Bolna calls /context at the very start of every inbound call.
