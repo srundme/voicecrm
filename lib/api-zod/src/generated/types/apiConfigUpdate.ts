@@ -13,6 +13,7 @@ export interface ApiConfigUpdate {
   brevo_sender_name?: string;
   meta_ads_access_token?: string;
   meta_ads_account_id?: string;
+  openai_api_key?: string;
   monthly_checkin_agent_id?: string;
   sms_on_lead_created?: boolean;
   sms_on_call_scheduled?: boolean;
