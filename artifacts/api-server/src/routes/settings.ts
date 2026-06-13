@@ -11,6 +11,7 @@ import {
   ensureApiConfig,
   serializeApiConfig,
 } from "../lib/org";
+import OpenAI from "openai";
 import { bolna } from "../lib/bolna";
 
 const router: IRouter = Router();
@@ -101,6 +102,29 @@ router.post(
         res.json({
           success: false,
           message: err instanceof Error ? err.message : "Network error",
+        });
+      }
+      return;
+    }
+
+    if (service === "openai") {
+      const key = cfg.openai_api_key || process.env["OPENAI_API_KEY"];
+      if (!key) {
+        res.json({ success: false, message: "OpenAI API key not set" });
+        return;
+      }
+      try {
+        const client = new OpenAI({ apiKey: key });
+        const models = await client.models.list();
+        const hasGpt = models.data.some((m) => m.id.startsWith("gpt-"));
+        res.json({
+          success: hasGpt,
+          message: hasGpt ? "Connected to OpenAI" : "Key valid but no GPT models found",
+        });
+      } catch (err) {
+        res.json({
+          success: false,
+          message: err instanceof Error ? err.message : "OpenAI connection failed",
         });
       }
       return;
