@@ -20,6 +20,8 @@ export interface ApiConfig {
   meta_ads_access_token?: string | null;
   /** @nullable */
   meta_ads_account_id?: string | null;
+  /** @nullable */
+  openai_api_key?: string | null;
   webhook_secret: string;
   context_api_bearer_token: string;
   /** @nullable */
