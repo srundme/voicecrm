@@ -67,11 +67,6 @@ function resolvePhone(req: Request): string | null {
 }
 
 async function handleContext(req: Request, res: Response): Promise<void> {
-  if (!(await authorizeContext(req))) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
   const rawPhone = String(
     (req.query as Record<string, unknown>)["contact_number"] ??
     (req.query as Record<string, unknown>)["phone"] ??
