@@ -161,7 +161,12 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
   // True if there has been at least one call where the lead actually spoke to
   // the agent (COMPLETED). If all calls are NO_ANSWER/BUSY/FAILED the lead
   // has never had a real conversation with the agent.
-  const hasActualConversation = recentCalls.some((c) => c.status === "COMPLETED");
+  // Also count IN_PROGRESS — these are calls that connected but whose webhook
+  // status update never arrived (e.g. webhook was misconfigured), so they stay
+  // stuck as IN_PROGRESS in the DB even though a real conversation happened.
+  const hasActualConversation = recentCalls.some(
+    (c) => c.status === "COMPLETED" || c.status === "IN_PROGRESS",
+  );
 
   // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
   // before triggerCall runs) are still detected here and get the right call_type + context.
@@ -301,7 +306,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
     return {
       ...base,
       call_type: "inbound_after_no_answer",
-      context: "",
+      context: knownProfileBlock,
       opening_line: opening,
       previous_execution_id: lastExecId,
     };
