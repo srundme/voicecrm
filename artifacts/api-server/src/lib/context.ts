@@ -182,8 +182,21 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
     ? `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
     : `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
 
-  // No prior call → fresh outbound prospect.
+  // No prior call log linked to this lead.
   if (!lastCall) {
+    if (isInbound) {
+      // Lead exists in DB (form filled) but we've never spoken AND they're calling us inbound.
+      // Treat as a warm inbound lead — don't use the outbound "you filled our form" opening.
+      const insLabel = insuranceType || "insurance";
+      return {
+        ...base,
+        call_type: "inbound_new",
+        context: "",
+        opening_line: `Hello. <break time="1s"/> Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`,
+        previous_execution_id: "",
+      };
+    }
+    // Fresh outbound prospect.
     return {
       ...base,
       call_type: "new",
