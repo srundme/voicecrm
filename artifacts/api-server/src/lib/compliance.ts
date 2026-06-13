@@ -2,15 +2,15 @@ import OpenAI from "openai";
 import { eq } from "drizzle-orm";
 import { db, callLogsTable, type CallLogRow, type ComplianceData, type ComplianceCheckResult } from "@workspace/db";
 import { logger } from "./logger";
+import { getOpenAIApiKey } from "./org";
 
-// Replit dev uses AI_INTEGRATIONS_* proxy; Railway production uses OPENAI_API_KEY directly.
-const openai = new OpenAI({
-  baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
-  apiKey:
-    process.env["AI_INTEGRATIONS_OPENAI_API_KEY"] ??
-    process.env["OPENAI_API_KEY"] ??
-    "dummy",
-});
+async function getOpenAI(): Promise<OpenAI> {
+  const apiKey = await getOpenAIApiKey();
+  return new OpenAI({
+    baseURL: process.env["AI_INTEGRATIONS_OPENAI_BASE_URL"] ?? undefined,
+    apiKey,
+  });
+}
 
 const PASS_THRESHOLD = 80;
 const WARNING_THRESHOLD = 60;
@@ -59,6 +59,7 @@ export async function analyzeCompliance(
 
   const userMessage = `TRANSCRIPT:\n${content}\n\nSUMMARY:\n${summary || "Not available"}`;
 
+  const openai = await getOpenAI();
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     max_completion_tokens: 2048,
