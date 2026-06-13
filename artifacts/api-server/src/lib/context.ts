@@ -91,23 +91,47 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
   const lastCall = recentCalls[0] ?? null;
 
   // Build combined context from all recent calls.
-  // Primary source: summary (>30 chars). Fallback: transcript excerpt (first 800 chars)
-  // so memory works even when Bolna does not generate a summary for the call.
+  // Priority order per call:
+  //   1. summary (>30 chars)  — best: concise, agent-written
+  //   2. transcript excerpt   — fallback: real conversation text
+  //   3. metadata stub        — last resort: call happened but content not ready yet
+  //      (Bolna processes transcripts async; within ~5 min of a call the transcript
+  //       may still be null even though status=COMPLETED. Without this stub the agent
+  //       gets context="" and starts completely fresh, forgetting the conversation.)
   const SUMMARY_MIN_LEN = 30;
   const TRANSCRIPT_MIN_LEN = 60;
+
   const combinedContext = recentCalls
     .filter((c) =>
+      c.status === "COMPLETED" ||
       (c.summary ?? "").trim().length >= SUMMARY_MIN_LEN ||
       (c.transcript ?? "").trim().length >= TRANSCRIPT_MIN_LEN,
     )
     .map((c) => {
       const summary = (c.summary ?? "").trim();
       if (summary.length >= SUMMARY_MIN_LEN) return summary;
-      // No usable summary — pull the first 800 chars of the transcript so the
-      // agent still has real conversation content to reference.
+
       const excerpt = (c.transcript ?? "").trim().slice(0, 800);
-      return `[Previous conversation excerpt]\n${excerpt}`;
+      if (excerpt.length >= TRANSCRIPT_MIN_LEN) {
+        return `[Previous conversation excerpt]\n${excerpt}`;
+      }
+
+      // Call completed but Bolna hasn't delivered transcript yet.
+      // Build a metadata stub so the agent knows a real conversation happened.
+      if (c.status === "COMPLETED") {
+        const callDate = c.created_at
+          ? c.created_at.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+          : "recently";
+        const durStr = c.duration_seconds && c.duration_seconds > 0
+          ? ` (${Math.round(c.duration_seconds / 60)} min call)`
+          : "";
+        const insLabel = (lead.insurance_type ?? "").toLowerCase() || "insurance";
+        return `[Previous call on ${callDate}${durStr}: Had a real conversation about ${insLabel}. Full transcript still processing — greet them as a returning customer and ask how you can continue helping them.]`;
+      }
+
+      return null;
     })
+    .filter((s): s is string => s !== null)
     .join("\n---\n");
 
   // True if there has been at least one call where the lead actually spoke to
