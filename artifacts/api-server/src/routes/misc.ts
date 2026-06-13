@@ -178,6 +178,31 @@ async function handleContext(req: Request, res: Response): Promise<void> {
 router.get("/context", handleContext);
 router.post("/context", handleContext);
 
+// ── Debug endpoint ────────────────────────────────────────────────────────────
+// GET /api/debug/context?phone=9876543210
+// Requires admin session (same cookie as the dashboard).
+// Returns the exact JSON payload Bolna would receive for this phone number.
+// Use this to test context/memory without making a real call.
+router.get("/debug/context", async (req: Request, res: Response): Promise<void> => {
+  const { isAuthenticated } = await import("../lib/auth");
+  if (!isAuthenticated(req)) {
+    res.status(401).json({ error: "Login to the VoiceCRM dashboard first" });
+    return;
+  }
+  const raw = String(req.query["phone"] ?? "").trim();
+  if (!raw) {
+    res.status(400).json({ error: "Pass ?phone=9876543210" });
+    return;
+  }
+  const { normalizePhone } = await import("../lib/phone");
+  const phone = normalizePhone(raw);
+  const { buildCallContext } = await import("../lib/context");
+  const direction = String(req.query["direction"] ?? "inbound").toLowerCase();
+  const isInbound = direction !== "outbound";
+  const ctx = await buildCallContext(phone, isInbound);
+  res.json({ _debug: { raw_phone: raw, normalized_phone: phone, direction }, ...ctx });
+});
+
 function checkSecret(req: Request, secret: string): boolean {
   const provided = String(req.query["secret"] ?? "");
   return provided.length > 0 && provided === secret;
