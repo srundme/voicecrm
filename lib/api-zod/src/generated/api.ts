@@ -29,6 +29,7 @@ export const GetApiConfigResponse = zod.object({
   "brevo_sender_name": zod.string().nullish(),
   "meta_ads_access_token": zod.string().nullish(),
   "meta_ads_account_id": zod.string().nullish(),
+  "openai_api_key": zod.string().nullish(),
   "webhook_secret": zod.string(),
   "context_api_bearer_token": zod.string(),
   "monthly_checkin_agent_id": zod.string().nullish(),
@@ -49,6 +50,7 @@ export const UpdateApiConfigBody = zod.object({
   "brevo_sender_name": zod.string().optional(),
   "meta_ads_access_token": zod.string().optional(),
   "meta_ads_account_id": zod.string().optional(),
+  "openai_api_key": zod.string().optional(),
   "monthly_checkin_agent_id": zod.string().optional(),
   "sms_on_lead_created": zod.boolean().optional(),
   "sms_on_call_scheduled": zod.boolean().optional(),
@@ -64,6 +66,7 @@ export const UpdateApiConfigResponse = zod.object({
   "brevo_sender_name": zod.string().nullish(),
   "meta_ads_access_token": zod.string().nullish(),
   "meta_ads_account_id": zod.string().nullish(),
+  "openai_api_key": zod.string().nullish(),
   "webhook_secret": zod.string(),
   "context_api_bearer_token": zod.string(),
   "monthly_checkin_agent_id": zod.string().nullish(),
@@ -78,7 +81,7 @@ export const UpdateApiConfigResponse = zod.object({
 
 
 export const TestConnectionParams = zod.object({
-  "service": zod.enum(['bolna', 'brevo', 'meta'])
+  "service": zod.enum(['bolna', 'brevo', 'meta', 'openai'])
 })
 
 export const TestConnectionResponse = zod.object({
