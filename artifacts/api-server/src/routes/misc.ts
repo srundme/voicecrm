@@ -5,6 +5,7 @@ import {
   leadsTable,
   callLogsTable,
   webhookLogsTable,
+  campaignsTable,
 } from "@workspace/db";
 import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone, isValidIndianMobile } from "../lib/phone";
@@ -95,8 +96,12 @@ async function handleContext(req: Request, res: Response): Promise<void> {
   ).trim();
   let ctxAgentName = "Dhivya";
   if (ctxAgentId) {
-    const ar = await bolna.listAgents();
-    if (ar.success) ctxAgentName = ar.data.find((a) => a.id === ctxAgentId)?.name ?? "Dhivya";
+    const [campaign] = await db
+      .select({ agent_name: campaignsTable.agent_name })
+      .from(campaignsTable)
+      .where(eq(campaignsTable.agent_id, ctxAgentId))
+      .limit(1);
+    ctxAgentName = campaign?.agent_name ?? "Dhivya";
   }
 
   // The /context endpoint is only called by Bolna for inbound calls.
