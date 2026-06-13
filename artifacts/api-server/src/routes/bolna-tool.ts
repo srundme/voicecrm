@@ -407,6 +407,7 @@ router.post("/bolna-tool/transfer-call", async (req: Request, res: Response): Pr
       const [call] = await db
         .select({
           summary: callLogsTable.summary,
+          transcript: callLogsTable.transcript,
           memory_injected: callLogsTable.memory_injected,
           lead_id: callLogsTable.lead_id,
         })
@@ -415,30 +416,45 @@ router.post("/bolna-tool/transfer-call", async (req: Request, res: Response): Pr
         .limit(1);
 
       if (call) {
-        resolvedSummary = resolvedSummary || call.summary || "";
+        // call.summary is ALWAYS empty during a live transfer — Bolna only
+        // generates it after the call ends. Use memory_injected fields instead:
+        // they hold everything we loaded at call-start (lead profile + prior context).
         const mem = call.memory_injected as Record<string, string> | null;
         resolvedName = resolvedName || mem?.["user_name"] || "";
         resolvedInsurance = resolvedInsurance || mem?.["insurance_type"] || "";
 
+        // Priority for context: agent-passed summary → memory context → transcript excerpt
+        if (!resolvedSummary) {
+          const priorContext = mem?.["context"] ?? "";
+          const transcriptExcerpt = (call.transcript ?? "").trim().slice(0, 300);
+          resolvedSummary = priorContext
+            ? `Previous call context: ${priorContext.slice(0, 300)}`
+            : transcriptExcerpt
+              ? `Transcript excerpt: ${transcriptExcerpt}`
+              : "";
+        }
+
+        // Also pull most recent completed call summary for this lead
         if (call.lead_id && !resolvedSummary) {
           const [lastCall] = await db
-            .select({ summary: callLogsTable.summary })
+            .select({ summary: callLogsTable.summary, memory_injected: callLogsTable.memory_injected })
             .from(callLogsTable)
             .where(eq(callLogsTable.lead_id, call.lead_id))
             .orderBy(desc(callLogsTable.created_at))
             .limit(1);
-          resolvedSummary = lastCall?.summary ?? "";
+          const lastMem = lastCall?.memory_injected as Record<string, string> | null;
+          resolvedSummary = lastCall?.summary ?? lastMem?.["context"] ?? "";
         }
       }
     }
 
-    const namePart = resolvedName ? `Caller: ${resolvedName}` : "Caller: Unknown";
-    const insPart = resolvedInsurance ? ` | Insurance: ${resolvedInsurance.toUpperCase()}` : "";
+    const namePart = resolvedName ? `Customer: ${resolvedName}` : "Customer: Unknown";
+    const insPart = resolvedInsurance ? ` | Product: ${resolvedInsurance.toUpperCase()} insurance` : "";
     const summaryPart = resolvedSummary
-      ? `\nSummary: ${resolvedSummary.slice(0, 200)}`
-      : "";
+      ? `\n\nWhat was discussed:\n${resolvedSummary.slice(0, 400)}`
+      : "\n\n(No prior context — customer calling fresh)";
 
-    const smsText = `[VoiceCRM Transfer]\n${namePart}${insPart}${summaryPart}\n\nCall transferring to you now.`;
+    const smsText = `[VoiceCRM LIVE TRANSFER]\n${namePart}${insPart}${summaryPart}\n\nCustomer is being connected to you now. Pick up and continue naturally.`;
 
     const smsResult = await sendSMS(cfg.human_agent_phone, smsText);
 
