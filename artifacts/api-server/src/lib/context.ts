@@ -143,8 +143,8 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
 
   const insuranceLabel = insuranceType || "insurance";
   const NEW_CALL_OPENING = insuranceType
-    ? `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
-    : `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
+    ? `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne hamare saath apni details share ki thi ${insuranceLabel} insurance ke baare mein — main usi silsile mein call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`
+    : `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne hamare website pe insurance ke liye apni details di thi — main usi baare mein baat karne ke liye call kar rahi hoon. Kya abhi thodi baat ho sakti hai?`;
 
   // No prior call → fresh outbound prospect.
   if (!lastCall) {
@@ -224,7 +224,7 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
   // NO_ANSWER / BUSY / FAILED). Give a warm fresh intro that acknowledges
   // the missed call rather than pretending a conversation already happened.
   if (isInbound && !hasActualConversation) {
-    const opening = `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon पॉलिसीफाई dot com se. Aapko hamare number se call aayi thi ${insuranceLabel} insurance ke baare mein — aap khud call kar rahe hain, bahut achha! Kya abhi thodi baat ho sakti hai?`;
+    const opening = `${HELLO} Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapko hamare number se call aayi thi ${insuranceLabel} insurance ke baare mein — aap khud call kar rahe hain, bahut achha! Kya abhi thodi baat ho sakti hai?`;
     return {
       ...base,
       call_type: "inbound_after_no_answer",
@@ -278,13 +278,13 @@ function buildCallbackOpening(
   // Has rich previous call context — reference it specifically
   if (combinedContext.trim().length > 50) {
     if (activity) {
-      return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "baad mein"} baat karne ko kaha tha — ${activity} ke baare mein aage baat karni thi na? Kya abhi thodi der baat ho sakti hai?`;
+      return `${hello} ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne ${timeHint ? `${timeHint} mein` : "baad mein"} baat karne ko kaha tha — ${activity} ke baare mein aage baat karni thi na? Kya abhi thodi der baat ho sakti hai?`;
     }
-    return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} baad` : "baad mein"} call karne ko kaha tha — ${insLabel} ke baare mein humari baat adhoori reh gayi thi. Kya abhi thodi der baat ho sakti hai?`;
+    return `${hello} ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne ${timeHint ? `${timeHint} baad` : "baad mein"} call karne ko kaha tha — ${insLabel} ke baare mein humari baat adhoori reh gayi thi. Kya abhi thodi der baat ho sakti hai?`;
   }
 
   // No rich context — warm generic but still better than the fixed line
-  return `${hello} ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
+  return `${hello} ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne ${timeHint ? `${timeHint} mein` : "thodi der baad"} baat karne ko kaha tha — ${insLabel} ke baare mein kuch important share karna tha. Kya abhi 2 minute hain aapke paas?`;
 }
 
 /**
@@ -308,14 +308,14 @@ function buildCallbackMissedInboundOpening(
   const activity = activityMatch?.[1]?.trim();
 
   if (activity) {
-    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne ${activity} ke baare mein baat karne ko kaha tha — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye, bahut achha! Batayein, kya discuss karna tha?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne ${activity} ke baare mein baat karne ko kaha tha — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye, bahut achha! Batayein, kya discuss karna tha?`;
   }
 
   if (combinedContext.trim().length > 30) {
-    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne callback request ki thi — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye! ${insLabel} ke baare mein humari baat adhoori thi — kya abhi baat kar sakte hain?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne callback request ki thi — main aapko call karne ki koshish kar rahi thi. Aap khud aa gaye! ${insLabel} ke baare mein humari baat adhoori thi — kya abhi baat kar sakte hain?`;
   }
 
-  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapne callback maangi thi — main aapko call kar rahi thi, aap khud aa gaye! Batayein, kya help chahiye?`;
+  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapne callback maangi thi — main aapko call kar rahi thi, aap khud aa gaye! Batayein, kya help chahiye?`;
 }
 
 /**
@@ -335,16 +335,16 @@ function buildInboundKnownOpening(
 
   // Lead has an active policy — likely calling about it
   if (stage === "POLICY_ISSUED" || stage === "RENEWED") {
-    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aapka call aaya — apni policy ke baare mein kuch poochna tha kya?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aapka call aaya — apni policy ke baare mein kuch poochna tha kya?`;
   }
 
   // Has previous call summary — reference it directly
   if (combinedContext.trim().length > 30) {
     const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
-    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Humne pichli baar ${insLabel} ke baare mein baat ki thi — aaj main aapki kya help kar sakti hoon?`;
+    return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Humne pichli baar ${insLabel} ke baare mein baat ki thi — aaj main aapki kya help kar sakti hoon?`;
   }
 
   // Known lead but no rich summary — warm but open-ended
   const insLabel = insuranceType ? `${insuranceType} insurance` : "insurance";
-  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon पॉलिसीफाई se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`;
+  return `${hello} Namaskaar ${name}, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`;
 }
