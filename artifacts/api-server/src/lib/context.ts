@@ -215,16 +215,16 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
       return {
         ...base,
         call_type: "inbound_new",
-        context: "",
+        context: knownProfileBlock,
         opening_line: `Hello. <break time="1s"/> Namaskaar ${firstName(name)} ji, main ${agentName} baat kar rahi hoon Care Health Insurance se. Aap ${insLabel} ke baare mein baat karna chahte the — batayein, kya help chahiye aapko?`,
         previous_execution_id: "",
       };
     }
-    // Fresh outbound prospect.
+    // Fresh outbound prospect — still pass known profile so agent doesn't re-ask form data.
     return {
       ...base,
       call_type: "new",
-      context: "",
+      context: knownProfileBlock,
       opening_line: NEW_CALL_OPENING,
       previous_execution_id: "",
     };
