@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { db, leadsTable, callLogsTable, followUpsTable } from "@workspace/db";
+import { and, desc, eq, ilike } from "drizzle-orm";
+import { db, leadsTable, callLogsTable, followUpsTable, dispositionsTable } from "@workspace/db";
 import { DEFAULT_ORG_ID, ensureApiConfig } from "../lib/org";
 import { normalizePhone, isValidIndianMobile } from "../lib/phone";
 import { sendSMS } from "../lib/brevo";
@@ -269,11 +269,12 @@ router.post("/bolna-tool/update-lead", async (req: Request, res: Response): Prom
     return;
   }
 
-  const { stage, notes, phone, execution_id } = req.body as {
+  const { stage, notes, phone, execution_id, disposition_label } = req.body as {
     stage?: string;
     notes?: string;
     phone?: string;
     execution_id?: string;
+    disposition_label?: string;
   };
 
   if (!stage) {
@@ -296,6 +297,8 @@ router.post("/bolna-tool/update-lead", async (req: Request, res: Response): Prom
 
   try {
     let leadId: string | null = null;
+    let callLogId: string | null = null;
+    let agentId: string | null = null;
 
     if (phone) {
       const normalized = normalizePhone(phone);
@@ -307,13 +310,17 @@ router.post("/bolna-tool/update-lead", async (req: Request, res: Response): Prom
       leadId = lead?.id ?? null;
     }
 
-    if (!leadId && execution_id) {
+    if (execution_id) {
       const [call] = await db
-        .select({ lead_id: callLogsTable.lead_id })
+        .select({ lead_id: callLogsTable.lead_id, id: callLogsTable.id, bolna_agent_id: callLogsTable.bolna_agent_id })
         .from(callLogsTable)
         .where(eq(callLogsTable.bolna_execution_id, execution_id))
         .limit(1);
-      leadId = call?.lead_id ?? null;
+      if (call) {
+        leadId = leadId ?? call.lead_id ?? null;
+        callLogId = call.id;
+        agentId = call.bolna_agent_id;
+      }
     }
 
     if (!leadId) {
@@ -329,8 +336,34 @@ router.post("/bolna-tool/update-lead", async (req: Request, res: Response): Prom
       })
       .where(eq(leadsTable.id, leadId));
 
+    // Auto-set call disposition if a label was provided and we have the call log
+    let dispositionId: string | null = null;
+    if (disposition_label && callLogId && agentId) {
+      const [disp] = await db
+        .select({ id: dispositionsTable.id })
+        .from(dispositionsTable)
+        .where(
+          and(
+            eq(dispositionsTable.org_id, DEFAULT_ORG_ID),
+            eq(dispositionsTable.bolna_agent_id, agentId),
+            ilike(dispositionsTable.label, disposition_label.trim()),
+          ),
+        )
+        .limit(1);
+      if (disp) {
+        dispositionId = disp.id;
+        await db
+          .update(callLogsTable)
+          .set({ disposition_id: disp.id })
+          .where(eq(callLogsTable.id, callLogId));
+        logger.info({ callLogId, dispositionId: disp.id, label: disposition_label }, "bolna-tool: disposition auto-set");
+      } else {
+        logger.warn({ callLogId, agentId, disposition_label }, "bolna-tool: no matching disposition found for label");
+      }
+    }
+
     logger.info({ leadId, stage: dbStage }, "bolna-tool: lead stage updated");
-    res.json({ success: true, lead_id: leadId, stage: dbStage });
+    res.json({ success: true, lead_id: leadId, stage: dbStage, disposition_id: dispositionId });
   } catch (err) {
     logger.error({ err }, "bolna-tool update-lead failed");
     res.status(500).json({ error: "Internal error" });
