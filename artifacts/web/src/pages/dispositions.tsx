@@ -1,10 +1,11 @@
-import { useListDispositions, useCreateDisposition, useUpdateDisposition, useDeleteDisposition, getListDispositionsQueryKey } from "@workspace/api-client-react";
+import { useListDispositions, useCreateDisposition, useUpdateDisposition, useDeleteDisposition, useListAgents, getListDispositionsQueryKey } from "@workspace/api-client-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -14,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export default function Dispositions() {
   const { data, isLoading } = useListDispositions();
+  const { data: agents } = useListAgents();
   const createDisposition = useCreateDisposition();
   const updateDisposition = useUpdateDisposition();
   const deleteDisposition = useDeleteDisposition();
@@ -32,7 +34,7 @@ export default function Dispositions() {
 
   const handleCreate = () => {
     if (!form.label.trim() || !form.bolna_agent_id.trim()) {
-      toast({ variant: "destructive", title: "Missing fields", description: "Label and Bolna agent ID are required." });
+      toast({ variant: "destructive", title: "Missing fields", description: "Agent and Label are required." });
       return;
     }
     createDisposition.mutate(
@@ -44,7 +46,7 @@ export default function Dispositions() {
         sort_order: Number(form.sort_order) || 0,
       } },
       {
-        onSuccess: () => { invalidate(); setOpen(false); setForm({ ...form, label: "", description: "" }); toast({ title: "Disposition created" }); },
+        onSuccess: () => { invalidate(); setOpen(false); setForm({ bolna_agent_id: "", label: "", color: "#6366f1", description: "", sort_order: "0" }); toast({ title: "Disposition created" }); },
         onError: (err: any) => toast({ variant: "destructive", title: "Failed", description: err.message }),
       }
     );
@@ -65,12 +67,15 @@ export default function Dispositions() {
     });
   };
 
+  const agentName = (agentId: string) =>
+    agents?.find((a) => a.id === agentId)?.name ?? agentId;
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto flex flex-col h-[calc(100vh-2rem)]">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dispositions</h1>
-          <p className="text-muted-foreground mt-1">Call outcome labels assigned per Bolna agent.</p>
+          <p className="text-muted-foreground mt-1">Call outcome labels assigned per voice agent.</p>
         </div>
         <Button onClick={() => setOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
@@ -95,17 +100,17 @@ export default function Dispositions() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
               ) : !data || data.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No dispositions yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No dispositions yet. Click "New Disposition" to create one.</TableCell></TableRow>
               ) : (
                 data.map((d) => (
                   <TableRow key={d.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="flex items-center gap-2 font-medium">
-                        <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: d.color }} />
+                        <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: d.color }} />
                         {d.label}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{d.bolna_agent_id}</TableCell>
+                    <TableCell className="text-sm">{agentName(d.bolna_agent_id)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[240px] truncate">{d.description || "-"}</TableCell>
                     <TableCell>{d.sort_order}</TableCell>
                     <TableCell><Switch checked={d.is_active} onCheckedChange={(v) => handleToggle(d.id, v)} /></TableCell>
@@ -126,12 +131,21 @@ export default function Dispositions() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Disposition</DialogTitle>
-            <DialogDescription>Define a call-outcome label for an agent.</DialogDescription>
+            <DialogDescription>Define a call-outcome label for a voice agent.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Bolna Agent ID</Label>
-              <Input value={form.bolna_agent_id} onChange={(e) => setForm(f => ({ ...f, bolna_agent_id: e.target.value }))} />
+              <Label>Agent</Label>
+              <Select value={form.bolna_agent_id} onValueChange={(v) => setForm(f => ({ ...f, bolna_agent_id: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select agent…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(agents || []).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Label</Label>
@@ -154,7 +168,7 @@ export default function Dispositions() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createDisposition.isPending}>{createDisposition.isPending ? "Saving..." : "Create"}</Button>
+            <Button onClick={handleCreate} disabled={createDisposition.isPending}>{createDisposition.isPending ? "Saving…" : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
