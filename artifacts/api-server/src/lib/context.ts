@@ -78,15 +78,33 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
 
   const now = Date.now();
 
-  // Fetch last 5 calls so we can build a combined summary across multiple
-  // short calls (e.g. a 10-min callback request) that individually may lack
-  // the rich context from earlier substantive conversations.
-  const recentCalls = await db
-    .select()
-    .from(callLogsTable)
-    .where(eq(callLogsTable.lead_id, lead.id))
-    .orderBy(desc(callLogsTable.created_at))
-    .limit(5);
+  // Run all three dependent queries in parallel — each only needs lead.id.
+  const [recentCalls, [pendingCallbackPre], [policyPre]] = await Promise.all([
+    db
+      .select()
+      .from(callLogsTable)
+      .where(eq(callLogsTable.lead_id, lead.id))
+      .orderBy(desc(callLogsTable.created_at))
+      .limit(5),
+    db
+      .select()
+      .from(followUpsTable)
+      .where(
+        and(
+          eq(followUpsTable.lead_id, lead.id),
+          inArray(followUpsTable.status, ["PENDING", "IN_PROGRESS"]),
+          eq(followUpsTable.type, "CALLBACK_REQUESTED"),
+        ),
+      )
+      .orderBy(desc(followUpsTable.scheduled_at))
+      .limit(1),
+    db
+      .select()
+      .from(policiesTable)
+      .where(eq(policiesTable.lead_id, lead.id))
+      .orderBy(desc(policiesTable.created_at))
+      .limit(1),
+  ]);
 
   const lastCall = recentCalls[0] ?? null;
 
@@ -168,27 +186,9 @@ export async function buildCallContext(rawPhone: string, isInbound = false, agen
     (c) => c.status === "COMPLETED" || c.status === "IN_PROGRESS",
   );
 
-  // Include IN_PROGRESS so that callbacks claimed by the scheduler (PENDING→IN_PROGRESS
-  // before triggerCall runs) are still detected here and get the right call_type + context.
-  const [pendingCallback] = await db
-    .select()
-    .from(followUpsTable)
-    .where(
-      and(
-        eq(followUpsTable.lead_id, lead.id),
-        inArray(followUpsTable.status, ["PENDING", "IN_PROGRESS"]),
-        eq(followUpsTable.type, "CALLBACK_REQUESTED"),
-      ),
-    )
-    .orderBy(desc(followUpsTable.scheduled_at))
-    .limit(1);
-
-  const [policy] = await db
-    .select()
-    .from(policiesTable)
-    .where(eq(policiesTable.lead_id, lead.id))
-    .orderBy(desc(policiesTable.created_at))
-    .limit(1);
+  // Already fetched in parallel above.
+  const pendingCallback = pendingCallbackPre;
+  const policy = policyPre;
 
   const name = lead.full_name;
   const gender = (lead.gender ?? "").toLowerCase();
