@@ -301,25 +301,25 @@ export async function triggerCall(opts: {
     };
   }
 
-  // Fetch unified context (Module 5) and inject it as agent variables so the
-  // Bolna agent opens with the right memory/opening line for this contact.
-  const context = await buildCallContext(phone);
+  // Resolve agent name first so the opening line uses the correct agent name
+  let resolvedAgentName = opts.agentName ?? null;
+  const agentsResult = await bolna.listAgents();
+  if (agentsResult.success) {
+    resolvedAgentName ??= agentsResult.data.find((a) => a.id === opts.agentId)?.name ?? null;
+  }
+
+  // Fetch unified context (Module 5) with correct agent name; run phone number
+  // lookup in parallel since the two are independent.
+  const [context, phoneNumbersResult] = await Promise.all([
+    buildCallContext(phone, false, resolvedAgentName ?? "Dhivya"),
+    bolna.listPhoneNumbers(),
+  ]);
   const variables = { ...context, ...(opts.variables ?? {}) };
   // Use the merged call_type (callbackVars may override context.call_type to "callback")
   const resolvedCallType = (variables.call_type as string) ?? context.call_type;
 
-  // Resolve agent name and linked outbound phone number in parallel
-  let resolvedAgentName = opts.agentName ?? null;
   let fromPhone: string | undefined;
 
-  const [agentsResult, phoneNumbersResult] = await Promise.all([
-    bolna.listAgents(),
-    bolna.listPhoneNumbers(),
-  ]);
-
-  if (agentsResult.success) {
-    resolvedAgentName ??= agentsResult.data.find((a) => a.id === opts.agentId)?.name ?? null;
-  }
   if (phoneNumbersResult.success) {
     // Use the phone number assigned to this agent as the outbound caller ID
     const linked = phoneNumbersResult.data.find((p) => p.agent_id === opts.agentId);
